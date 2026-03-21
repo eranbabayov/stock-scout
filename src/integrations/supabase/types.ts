@@ -14,7 +14,126 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          created_at: string
+          id: string
+          updated_at: string
+          user_id: string
+          username: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id: string
+          username: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+          username?: string
+        }
+        Relationships: []
+      }
+      stock_cache: {
+        Row: {
+          cached_at: string
+          close: number
+          date: string
+          high: number | null
+          id: string
+          low: number | null
+          open: number | null
+          symbol: string
+          volume: number | null
+        }
+        Insert: {
+          cached_at?: string
+          close: number
+          date: string
+          high?: number | null
+          id?: string
+          low?: number | null
+          open?: number | null
+          symbol: string
+          volume?: number | null
+        }
+        Update: {
+          cached_at?: string
+          close?: number
+          date?: string
+          high?: number | null
+          id?: string
+          low?: number | null
+          open?: number | null
+          symbol?: string
+          volume?: number | null
+        }
+        Relationships: []
+      }
+      user_stocks: {
+        Row: {
+          added_at: string
+          id: string
+          symbol: string
+          user_id: string
+        }
+        Insert: {
+          added_at?: string
+          id?: string
+          symbol: string
+          user_id: string
+        }
+        Update: {
+          added_at?: string
+          id?: string
+          symbol?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_trades: {
+        Row: {
+          buy_date: string
+          buy_price: number
+          created_at: string
+          id: string
+          notes: string | null
+          sell_date: string | null
+          sell_price: number | null
+          symbol: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          buy_date: string
+          buy_price: number
+          created_at?: string
+          id?: string
+          notes?: string | null
+          sell_date?: string | null
+          sell_price?: number | null
+          symbol: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          buy_date?: string
+          buy_price?: number
+          created_at?: string
+          id?: string
+          notes?: string | null
+          sell_date?: string | null
+          sell_price?: number | null
+          symbol?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
