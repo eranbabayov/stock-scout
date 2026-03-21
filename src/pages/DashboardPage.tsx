@@ -69,7 +69,8 @@ const DashboardPage: React.FC = () => {
 
         {/* Watchlist Grid */}
         {symbols.length > 0 && stocksData && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+          <div className="overflow-y-auto max-h-[calc(3*theme(spacing.28))]">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
             {symbols.map((symbol) => {
               const data = stocksData[symbol];
               if (!data || !Array.isArray(data)) return null;
@@ -86,6 +87,7 @@ const DashboardPage: React.FC = () => {
               );
             })}
           </div>
+        </div>
         )}
 
         {symbols.length === 0 && !isLoading && (
