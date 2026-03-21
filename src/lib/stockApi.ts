@@ -42,6 +42,8 @@ export function calcEMA(data: StockDataPoint[], period: number): { date: string;
   const alpha = 2 / (period + 1);
   const result: { date: string; value: number }[] = [];
   let previousEma = data[0].close;
+  console.log("previousEma:")
+  console.log(previousEma)
 
   for (const point of data) {
     previousEma = alpha * point.close + (1 - alpha) * previousEma;
@@ -70,9 +72,12 @@ export function getQuoteFromData(data: StockDataPoint[]): StockQuote | null {
 export function checkStocksAboveAvg(
   stocksData: Record<string, StockDataPoint[]>,
   avgPeriods: number[],
-  thresholdPercent: number = 2
+  lowerThresholdPercent: number = 0,
+  upperThresholdPercent: number = Infinity
 ): Record<string, Record<string, boolean>> {
   const result: Record<string, Record<string, boolean>> = {};
+  console.log("avgPeriods");
+  console.log(avgPeriods);
 
   for (const [symbol, data] of Object.entries(stocksData)) {
     if (!Array.isArray(data) || data.length === 0) continue;
@@ -85,7 +90,13 @@ export function checkStocksAboveAvg(
       const ema = calcEMA(data, period);
       if (ema.length === 0) { allMatch = false; break; }
       const lastEma = ema[ema.length - 1].value;
-      const isAbove = lastClose > lastEma && lastClose < lastEma * (1 + thresholdPercent / 100);
+      // const isAbove = lastClose > lastEma && lastClose < lastEma * (1 + thresholdPercent / 100);  this is check stocks above with max 2%
+      // const isAbove = lastClose > lastEma;
+      const percentAbove = ((lastClose - lastEma) / lastEma) * 100;
+      const isAbove =
+        percentAbove >= lowerThresholdPercent &&
+        (upperThresholdPercent === Infinity || percentAbove <= upperThresholdPercent);
+
       matches[String(period)] = isAbove;
       if (!isAbove) { allMatch = false; break; }
     }

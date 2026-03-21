@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 import { type StockDataPoint, checkStocksAboveAvg } from "@/lib/stockApi";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -12,8 +12,10 @@ interface StocksAboveAvgProps {
 const ALL_PERIODS = [20, 50, 150, 200];
 
 const StocksAboveAvg: React.FC<StocksAboveAvgProps> = ({ stocksData }) => {
-  const [selectedPeriods, setSelectedPeriods] = useState<number[]>([20, 50]);
+  const [selectedPeriods, setSelectedPeriods] = useState<number[]>([150]);
   const [results, setResults] = useState<Record<string, Record<string, boolean>> | null>(null);
+  const [lowerThreshold, setLowerThreshold] = useState<number>(0);
+  const [upperThreshold, setUpperThreshold] = useState<number>(50);
 
   const togglePeriod = (period: number) => {
     setSelectedPeriods((prev) =>
@@ -22,7 +24,7 @@ const StocksAboveAvg: React.FC<StocksAboveAvgProps> = ({ stocksData }) => {
   };
 
   const analyze = () => {
-    const res = checkStocksAboveAvg(stocksData, selectedPeriods);
+    const res = checkStocksAboveAvg(stocksData, selectedPeriods, lowerThreshold, upperThreshold);
     setResults(res);
   };
 
@@ -33,6 +35,7 @@ const StocksAboveAvg: React.FC<StocksAboveAvgProps> = ({ stocksData }) => {
         <h3 className="text-lg font-bold text-foreground">Stocks Above Moving Averages</h3>
       </div>
 
+      {/* Period checkboxes */}
       <div className="flex items-center gap-4 mb-4 flex-wrap">
         {ALL_PERIODS.map((period) => (
           <label key={period} className="flex items-center gap-2 text-sm cursor-pointer">
@@ -43,11 +46,36 @@ const StocksAboveAvg: React.FC<StocksAboveAvgProps> = ({ stocksData }) => {
             <span className="font-mono text-foreground">EMA {period}</span>
           </label>
         ))}
+      </div>
+
+      {/* Threshold controls */}
+      <div className="flex items-center gap-4 mb-4 flex-wrap">
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Min % above EMA:</span>
+          <input
+            type="number"
+            min={0}
+            value={lowerThreshold}
+            onChange={(e) => setLowerThreshold(Number(e.target.value))}
+            className="w-20 px-2 py-1 rounded border border-border bg-background text-foreground font-mono text-sm"
+          />
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Max % above EMA:</span>
+          <input
+            type="number"
+            min={0}
+            value={upperThreshold}
+            onChange={(e) => setUpperThreshold(Number(e.target.value))}
+            className="w-20 px-2 py-1 rounded border border-border bg-background text-foreground font-mono text-sm"
+          />
+        </label>
         <Button onClick={analyze} size="sm" disabled={selectedPeriods.length === 0}>
           Analyze
         </Button>
       </div>
 
+      {/* Results */}
       {results !== null && (
         <div className="space-y-2">
           {Object.keys(results).length === 0 ? (
