@@ -74,34 +74,32 @@ export function checkStocksAboveAvg(
   avgPeriods: number[],
   lowerThresholdPercent: number = 0,
   upperThresholdPercent: number = Infinity
-): Record<string, Record<string, boolean>> {
-  const result: Record<string, Record<string, boolean>> = {};
-  console.log("avgPeriods");
-  console.log(avgPeriods);
+): Record<string, Record<string, number>> {   // ← number instead of boolean
+  const result: Record<string, Record<string, number>> = {};
 
   for (const [symbol, data] of Object.entries(stocksData)) {
     if (!Array.isArray(data) || data.length === 0) continue;
 
     const lastClose = data[data.length - 1].close;
-    let allMatch = true;
-    const matches: Record<string, boolean> = {};
+    const matches: Record<string, number> = {};
 
     for (const period of avgPeriods) {
       const ema = calcEMA(data, period);
-      if (ema.length === 0) { allMatch = false; break; }
+      if (ema.length === 0) continue;
+
       const lastEma = ema[ema.length - 1].value;
-      // const isAbove = lastClose > lastEma && lastClose < lastEma * (1 + thresholdPercent / 100);  this is check stocks above with max 2%
-      // const isAbove = lastClose > lastEma;
       const percentAbove = ((lastClose - lastEma) / lastEma) * 100;
+
       const isAbove =
         percentAbove >= lowerThresholdPercent &&
         (upperThresholdPercent === Infinity || percentAbove <= upperThresholdPercent);
 
-      matches[String(period)] = isAbove;
-      if (!isAbove) { allMatch = false; break; }
+      if (isAbove) {
+        matches[String(period)] = Math.round(percentAbove * 100) / 100; // ← store % value
+      }
     }
 
-    if (allMatch && Object.keys(matches).length > 0) {
+    if (Object.keys(matches).length > 0) {
       result[symbol] = matches;
     }
   }

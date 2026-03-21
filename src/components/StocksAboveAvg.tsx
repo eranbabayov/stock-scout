@@ -13,7 +13,7 @@ const ALL_PERIODS = [20, 50, 150, 200];
 
 const StocksAboveAvg: React.FC<StocksAboveAvgProps> = ({ stocksData }) => {
   const [selectedPeriods, setSelectedPeriods] = useState<number[]>([150]);
-  const [results, setResults] = useState<Record<string, Record<string, boolean>> | null>(null);
+  const [results, setResults] = useState<Record<string, Record<string, number>> | null>(null);
   const [lowerThreshold, setLowerThreshold] = useState<number>(0);
   const [upperThreshold, setUpperThreshold] = useState<number>(50);
 
@@ -80,15 +80,23 @@ const StocksAboveAvg: React.FC<StocksAboveAvgProps> = ({ stocksData }) => {
         <div className="space-y-2">
           {Object.keys(results).length === 0 ? (
             <p className="text-muted-foreground text-sm">
-              No stocks found above all selected moving averages within the threshold.
+              No stocks found above selected moving averages within the threshold.
             </p>
           ) : (
             Object.entries(results).map(([symbol, periods]) => (
-              <div key={symbol} className="flex items-center gap-2 p-3 rounded-lg bg-accent/50">
-                <span className="font-mono font-bold text-foreground">{symbol}</span>
-                {Object.keys(periods).map((p) => (
-                  <Badge key={p} variant="secondary" className="font-mono text-xs">
+              <div
+                key={symbol}
+                className="flex items-center gap-2 p-3 rounded-lg bg-accent/50 flex-wrap"
+              >
+                <span className="font-mono font-bold text-foreground w-16">{symbol}</span>
+                {Object.entries(periods).map(([p, pct]) => (
+                  <Badge
+                    key={p}
+                    variant="secondary"
+                    className="font-mono text-xs flex items-center gap-1"
+                  >
                     EMA {p} ✓
+                    <span className="text-green-500">+{pct}% above</span>
                   </Badge>
                 ))}
               </div>
