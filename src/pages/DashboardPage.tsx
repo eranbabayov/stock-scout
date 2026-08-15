@@ -5,11 +5,14 @@ import WatchlistCard from "@/components/WatchlistCard";
 import StockChart from "@/components/StockChart";
 import AddStockForm from "@/components/AddStockForm";
 import StocksAboveAvg from "@/components/StocksAboveAvg";
+import FibRetracement from "@/components/FibRetracement";
+import CombinedScreener from "@/components/CombinedScreener";
 import TradesPanel from "@/components/TradesPanel";
 import { Button } from "@/components/ui/button";
 import { TrendingUp, LogOut, Loader2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import Logo from "@/components/Logo";
 
 const DashboardPage: React.FC = () => {
   const { user, signOut } = useAuth();
@@ -41,10 +44,8 @@ const DashboardPage: React.FC = () => {
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto flex items-center justify-between py-3 px-4">
           <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-              <TrendingUp className="h-4 w-4 text-primary-foreground" />
-            </div>
-            <span className="font-bold text-lg text-foreground">StockAdvisor</span>
+            <Logo className="h-8 w-8" />
+            <span className="font-bold text-lg text-foreground">Stock Scout</span>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-sm text-muted-foreground hidden sm:block">{user?.email}</span>
@@ -113,8 +114,10 @@ const DashboardPage: React.FC = () => {
               )}
             </TabsContent>
 
-            <TabsContent value="analysis">
+            <TabsContent value="analysis" className="space-y-4">
               <StocksAboveAvg stocksData={stocksData} />
+              <FibRetracement stocksData={stocksData} />
+              <CombinedScreener stocksData={stocksData} />
             </TabsContent>
 
             <TabsContent value="trades">

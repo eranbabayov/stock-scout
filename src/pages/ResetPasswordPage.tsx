@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
-import { TrendingUp } from "lucide-react";
 import { toast } from "sonner";
+import Logo from "@/components/Logo";
 
 const ResetPasswordPage: React.FC = () => {
   const [currentPassword, setCurrentPassword] = useState("");
@@ -40,9 +40,7 @@ const ResetPasswordPage: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md p-8 animate-slide-up">
         <div className="flex items-center gap-3 mb-8">
-          <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center">
-            <TrendingUp className="h-5 w-5 text-primary-foreground" />
-          </div>
+          <Logo className="h-10 w-10" />
           <div>
             <h1 className="text-2xl font-bold text-foreground">Change Password</h1>
             <p className="text-sm text-muted-foreground">Enter your current and new password</p>

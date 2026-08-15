@@ -1,5 +1,11 @@
 import React, { useState } from "react";
-import { type StockDataPoint, type MovingAverageIndicator, checkStocksAboveAvg } from "@/lib/stockApi";
+import {
+  type StockDataPoint,
+  type MovingAverageIndicator,
+  ALL_MA_INDICATORS,
+  maIndicatorKey,
+  checkStocksAboveAvg,
+} from "@/lib/stockApi";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -7,18 +13,6 @@ import { BarChart3 } from "lucide-react";
 
 interface StocksAboveAvgProps {
   stocksData: Record<string, StockDataPoint[]>;
-}
-
-const ALL_INDICATORS: MovingAverageIndicator[] = [
-  { type: "EMA", period: 20 },
-  { type: "EMA", period: 50 },
-  { type: "EMA", period: 150 },
-  { type: "EMA", period: 200 },
-  { type: "SMA", period: 150 },
-];
-
-function indicatorKey(indicator: MovingAverageIndicator) {
-  return `${indicator.type}${indicator.period}`;
 }
 
 const StocksAboveAvg: React.FC<StocksAboveAvgProps> = ({ stocksData }) => {
@@ -31,8 +25,8 @@ const StocksAboveAvg: React.FC<StocksAboveAvgProps> = ({ stocksData }) => {
 
   const toggleIndicator = (indicator: MovingAverageIndicator) => {
     setSelectedIndicators((prev) =>
-      prev.some((i) => indicatorKey(i) === indicatorKey(indicator))
-        ? prev.filter((i) => indicatorKey(i) !== indicatorKey(indicator))
+      prev.some((i) => maIndicatorKey(i) === maIndicatorKey(indicator))
+        ? prev.filter((i) => maIndicatorKey(i) !== maIndicatorKey(indicator))
         : [...prev, indicator]
     );
   };
@@ -51,10 +45,10 @@ const StocksAboveAvg: React.FC<StocksAboveAvgProps> = ({ stocksData }) => {
 
       {/* Indicator checkboxes */}
       <div className="flex items-center gap-4 mb-4 flex-wrap">
-        {ALL_INDICATORS.map((indicator) => (
-          <label key={indicatorKey(indicator)} className="flex items-center gap-2 text-sm cursor-pointer">
+        {ALL_MA_INDICATORS.map((indicator) => (
+          <label key={maIndicatorKey(indicator)} className="flex items-center gap-2 text-sm cursor-pointer">
             <Checkbox
-              checked={selectedIndicators.some((i) => indicatorKey(i) === indicatorKey(indicator))}
+              checked={selectedIndicators.some((i) => maIndicatorKey(i) === maIndicatorKey(indicator))}
               onCheckedChange={() => toggleIndicator(indicator)}
             />
             <span className="font-mono text-foreground">

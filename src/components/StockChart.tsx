@@ -1,5 +1,12 @@
 import React, { useMemo, useState } from "react";
-import { type StockDataPoint, type MovingAverageIndicator, calcEMA, calcSMA } from "@/lib/stockApi";
+import {
+  type StockDataPoint,
+  type MovingAverageIndicator,
+  ALL_MA_INDICATORS,
+  maIndicatorKey,
+  calcEMA,
+  calcSMA,
+} from "@/lib/stockApi";
 import {
   LineChart,
   Line,
@@ -14,18 +21,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 interface StockChartProps {
   symbol: string;
   data: StockDataPoint[];
-}
-
-const ALL_INDICATORS: MovingAverageIndicator[] = [
-  { type: "EMA", period: 20 },
-  { type: "EMA", period: 50 },
-  { type: "EMA", period: 150 },
-  { type: "EMA", period: 200 },
-  { type: "SMA", period: 150 },
-];
-
-function indicatorKey(indicator: MovingAverageIndicator) {
-  return `${indicator.type}${indicator.period}`;
 }
 
 const MA_COLORS: Record<string, string> = {
@@ -44,8 +39,8 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
 
   const chartData = useMemo(() => {
     const series: Record<string, { date: string; value: number }[]> = {};
-    for (const indicator of ALL_INDICATORS) {
-      const key = indicatorKey(indicator);
+    for (const indicator of ALL_MA_INDICATORS) {
+      const key = maIndicatorKey(indicator);
       series[key] = indicator.type === "SMA" ? calcSMA(data, indicator.period) : calcEMA(data, indicator.period);
     }
 
@@ -54,8 +49,8 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
         date: point.date,
         close: point.close,
       };
-      for (const indicator of ALL_INDICATORS) {
-        const key = indicatorKey(indicator);
+      for (const indicator of ALL_MA_INDICATORS) {
+        const key = maIndicatorKey(indicator);
         row[key] = series[key][i]?.value ?? null;
       }
       return row;
@@ -64,8 +59,8 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
 
   const toggleIndicator = (indicator: MovingAverageIndicator) => {
     setSelectedIndicators((prev) =>
-      prev.some((i) => indicatorKey(i) === indicatorKey(indicator))
-        ? prev.filter((i) => indicatorKey(i) !== indicatorKey(indicator))
+      prev.some((i) => maIndicatorKey(i) === maIndicatorKey(indicator))
+        ? prev.filter((i) => maIndicatorKey(i) !== maIndicatorKey(indicator))
         : [...prev, indicator]
     );
   };
@@ -75,12 +70,12 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h3 className="text-lg font-bold text-foreground font-mono">{symbol} — 1 Year Chart</h3>
         <div className="flex items-center gap-4 flex-wrap">
-          {ALL_INDICATORS.map((indicator) => {
-            const key = indicatorKey(indicator);
+          {ALL_MA_INDICATORS.map((indicator) => {
+            const key = maIndicatorKey(indicator);
             return (
               <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
                 <Checkbox
-                  checked={selectedIndicators.some((i) => indicatorKey(i) === key)}
+                  checked={selectedIndicators.some((i) => maIndicatorKey(i) === key)}
                   onCheckedChange={() => toggleIndicator(indicator)}
                 />
                 <span className="font-mono" style={{ color: MA_COLORS[key] }}>
@@ -130,7 +125,7 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
             name="Close"
           />
           {selectedIndicators.map((indicator) => {
-            const key = indicatorKey(indicator);
+            const key = maIndicatorKey(indicator);
             return (
               <Line
                 key={key}
