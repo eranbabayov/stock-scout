@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { type StockDataPoint, checkStocksAboveAvg } from "@/lib/stockApi";
+import { type StockDataPoint, type MovingAverageIndicator, checkStocksAboveAvg } from "@/lib/stockApi";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -9,22 +9,36 @@ interface StocksAboveAvgProps {
   stocksData: Record<string, StockDataPoint[]>;
 }
 
-const ALL_PERIODS = [20, 50, 150, 200];
+const ALL_INDICATORS: MovingAverageIndicator[] = [
+  { type: "EMA", period: 20 },
+  { type: "EMA", period: 50 },
+  { type: "EMA", period: 150 },
+  { type: "EMA", period: 200 },
+  { type: "SMA", period: 150 },
+];
+
+function indicatorKey(indicator: MovingAverageIndicator) {
+  return `${indicator.type}${indicator.period}`;
+}
 
 const StocksAboveAvg: React.FC<StocksAboveAvgProps> = ({ stocksData }) => {
-  const [selectedPeriods, setSelectedPeriods] = useState<number[]>([150]);
+  const [selectedIndicators, setSelectedIndicators] = useState<MovingAverageIndicator[]>([
+    { type: "EMA", period: 150 },
+  ]);
   const [results, setResults] = useState<Record<string, Record<string, number>> | null>(null);
   const [lowerThreshold, setLowerThreshold] = useState<number>(0);
   const [upperThreshold, setUpperThreshold] = useState<number>(50);
 
-  const togglePeriod = (period: number) => {
-    setSelectedPeriods((prev) =>
-      prev.includes(period) ? prev.filter((p) => p !== period) : [...prev, period]
+  const toggleIndicator = (indicator: MovingAverageIndicator) => {
+    setSelectedIndicators((prev) =>
+      prev.some((i) => indicatorKey(i) === indicatorKey(indicator))
+        ? prev.filter((i) => indicatorKey(i) !== indicatorKey(indicator))
+        : [...prev, indicator]
     );
   };
 
   const analyze = () => {
-    const res = checkStocksAboveAvg(stocksData, selectedPeriods, lowerThreshold, upperThreshold);
+    const res = checkStocksAboveAvg(stocksData, selectedIndicators, lowerThreshold, upperThreshold);
     setResults(res);
   };
 
@@ -35,15 +49,17 @@ const StocksAboveAvg: React.FC<StocksAboveAvgProps> = ({ stocksData }) => {
         <h3 className="text-lg font-bold text-foreground">Stocks Above Moving Averages</h3>
       </div>
 
-      {/* Period checkboxes */}
+      {/* Indicator checkboxes */}
       <div className="flex items-center gap-4 mb-4 flex-wrap">
-        {ALL_PERIODS.map((period) => (
-          <label key={period} className="flex items-center gap-2 text-sm cursor-pointer">
+        {ALL_INDICATORS.map((indicator) => (
+          <label key={indicatorKey(indicator)} className="flex items-center gap-2 text-sm cursor-pointer">
             <Checkbox
-              checked={selectedPeriods.includes(period)}
-              onCheckedChange={() => togglePeriod(period)}
+              checked={selectedIndicators.some((i) => indicatorKey(i) === indicatorKey(indicator))}
+              onCheckedChange={() => toggleIndicator(indicator)}
             />
-            <span className="font-mono text-foreground">EMA {period}</span>
+            <span className="font-mono text-foreground">
+              {indicator.type} {indicator.period}
+            </span>
           </label>
         ))}
       </div>
@@ -51,7 +67,7 @@ const StocksAboveAvg: React.FC<StocksAboveAvgProps> = ({ stocksData }) => {
       {/* Threshold controls */}
       <div className="flex items-center gap-4 mb-4 flex-wrap">
         <label className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">Min % above EMA:</span>
+          <span className="text-muted-foreground">Min % above:</span>
           <input
             type="number"
             min={0}
@@ -61,7 +77,7 @@ const StocksAboveAvg: React.FC<StocksAboveAvgProps> = ({ stocksData }) => {
           />
         </label>
         <label className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">Max % above EMA:</span>
+          <span className="text-muted-foreground">Max % above:</span>
           <input
             type="number"
             min={0}
@@ -70,7 +86,7 @@ const StocksAboveAvg: React.FC<StocksAboveAvgProps> = ({ stocksData }) => {
             className="w-20 px-2 py-1 rounded border border-border bg-background text-foreground font-mono text-sm"
           />
         </label>
-        <Button onClick={analyze} size="sm" disabled={selectedPeriods.length === 0}>
+        <Button onClick={analyze} size="sm" disabled={selectedIndicators.length === 0}>
           Analyze
         </Button>
       </div>
@@ -83,19 +99,19 @@ const StocksAboveAvg: React.FC<StocksAboveAvgProps> = ({ stocksData }) => {
               No stocks found above selected moving averages within the threshold.
             </p>
           ) : (
-            Object.entries(results).map(([symbol, periods]) => (
+            Object.entries(results).map(([symbol, matches]) => (
               <div
                 key={symbol}
                 className="flex items-center gap-2 p-3 rounded-lg bg-accent/50 flex-wrap"
               >
                 <span className="font-mono font-bold text-foreground w-16">{symbol}</span>
-                {Object.entries(periods).map(([p, pct]) => (
+                {Object.entries(matches).map(([key, pct]) => (
                   <Badge
-                    key={p}
+                    key={key}
                     variant="secondary"
                     className="font-mono text-xs flex items-center gap-1"
                   >
-                    EMA {p} ✓
+                    {key.replace(/(\d+)$/, " $1")} ✓
                     <span className="text-green-500">+{pct}% above</span>
                   </Badge>
                 ))}

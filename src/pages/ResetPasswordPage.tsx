@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 
 const ResetPasswordPage: React.FC = () => {
+  const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -25,7 +26,7 @@ const ResetPasswordPage: React.FC = () => {
       return;
     }
     setLoading(true);
-    const { error } = await updatePassword(password);
+    const { error } = await updatePassword(currentPassword, password);
     setLoading(false);
     if (error) {
       toast.error(error.message);
@@ -43,12 +44,22 @@ const ResetPasswordPage: React.FC = () => {
             <TrendingUp className="h-5 w-5 text-primary-foreground" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Set New Password</h1>
-            <p className="text-sm text-muted-foreground">Enter your new password</p>
+            <h1 className="text-2xl font-bold text-foreground">Change Password</h1>
+            <p className="text-sm text-muted-foreground">Enter your current and new password</p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="text-sm font-medium text-foreground mb-1 block">Current Password</label>
+            <Input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder="Current password"
+              required
+            />
+          </div>
           <div>
             <label className="text-sm font-medium text-foreground mb-1 block">New Password</label>
             <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Min 8 characters" required />

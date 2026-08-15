@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { apiFetch } from "@/lib/apiClient";
 
 export interface StockDataPoint {
   symbol: string;
@@ -19,21 +19,22 @@ export interface StockQuote {
 }
 
 export async function fetchStockData(symbols: string[]): Promise<Record<string, StockDataPoint[]>> {
-  const { data, error } = await supabase.functions.invoke("fetch-stock-data", {
-    body: { symbols, period: "1y" },
+  return apiFetch("/stock-data/fetch", {
+    method: "POST",
+    body: JSON.stringify({ symbols, period: "1y" }),
   });
-
-  if (error) throw new Error(error.message);
-  return data;
 }
 
 export async function validateStock(symbol: string): Promise<boolean> {
-  const { data, error } = await supabase.functions.invoke("validate-stock", {
-    body: { symbol },
-  });
-
-  if (error) return false;
-  return data?.valid ?? false;
+  try {
+    const data = await apiFetch<{ valid: boolean }>("/stock-data/validate", {
+      method: "POST",
+      body: JSON.stringify({ symbol }),
+    });
+    return data?.valid ?? false;
+  } catch {
+    return false;
+  }
 }
 
 export function calcEMA(data: StockDataPoint[], period: number): { date: string; value: number }[] {
@@ -51,6 +52,38 @@ export function calcEMA(data: StockDataPoint[], period: number): { date: string;
   }
 
   return result;
+}
+
+export function calcSMA(data: StockDataPoint[], period: number): { date: string; value: number }[] {
+  if (data.length === 0) return [];
+
+  const result: { date: string; value: number }[] = [];
+  let windowSum = 0;
+
+  for (let i = 0; i < data.length; i++) {
+    windowSum += data[i].close;
+    if (i >= period) {
+      windowSum -= data[i - period].close;
+    }
+    const windowSize = Math.min(i + 1, period);
+    result.push({ date: data[i].date, value: Math.round((windowSum / windowSize) * 100) / 100 });
+  }
+
+  return result;
+}
+
+export type MovingAverageType = "EMA" | "SMA";
+
+export interface MovingAverageIndicator {
+  type: MovingAverageType;
+  period: number;
+}
+
+function calcMovingAverage(
+  data: StockDataPoint[],
+  indicator: MovingAverageIndicator
+): { date: string; value: number }[] {
+  return indicator.type === "SMA" ? calcSMA(data, indicator.period) : calcEMA(data, indicator.period);
 }
 
 export function getQuoteFromData(data: StockDataPoint[]): StockQuote | null {
@@ -71,10 +104,10 @@ export function getQuoteFromData(data: StockDataPoint[]): StockQuote | null {
 
 export function checkStocksAboveAvg(
   stocksData: Record<string, StockDataPoint[]>,
-  avgPeriods: number[],
+  indicators: MovingAverageIndicator[],
   lowerThresholdPercent: number = 0,
   upperThresholdPercent: number = Infinity
-): Record<string, Record<string, number>> {   // ← number instead of boolean
+): Record<string, Record<string, number>> {
   const result: Record<string, Record<string, number>> = {};
 
   for (const [symbol, data] of Object.entries(stocksData)) {
@@ -83,23 +116,25 @@ export function checkStocksAboveAvg(
     const lastClose = data[data.length - 1].close;
     const matches: Record<string, number> = {};
 
-    for (const period of avgPeriods) {
-      const ema = calcEMA(data, period);
-      if (ema.length === 0) continue;
+    // AND semantics: a symbol only qualifies if every selected indicator
+    // is within the threshold range, so stop at the first one that fails.
+    for (const indicator of indicators) {
+      const series = calcMovingAverage(data, indicator);
+      if (series.length === 0) break;
 
-      const lastEma = ema[ema.length - 1].value;
-      const percentAbove = ((lastClose - lastEma) / lastEma) * 100;
+      const lastValue = series[series.length - 1].value;
+      const percentAbove = ((lastClose - lastValue) / lastValue) * 100;
 
       const isAbove =
         percentAbove >= lowerThresholdPercent &&
         (upperThresholdPercent === Infinity || percentAbove <= upperThresholdPercent);
 
-      if (isAbove) {
-        matches[String(period)] = Math.round(percentAbove * 100) / 100; // ← store % value
-      }
+      if (!isAbove) break;
+
+      matches[`${indicator.type}${indicator.period}`] = Math.round(percentAbove * 100) / 100;
     }
 
-    if (Object.keys(matches).length > 0) {
+    if (Object.keys(matches).length === indicators.length) {
       result[symbol] = matches;
     }
   }

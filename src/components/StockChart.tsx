@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { type StockDataPoint, calcEMA } from "@/lib/stockApi";
+import { type StockDataPoint, type MovingAverageIndicator, calcEMA, calcSMA } from "@/lib/stockApi";
 import {
   LineChart,
   Line,
@@ -16,20 +16,37 @@ interface StockChartProps {
   data: StockDataPoint[];
 }
 
-const MA_COLORS: Record<number, string> = {
-  20: "hsl(200, 80%, 50%)",
-  50: "hsl(280, 65%, 60%)",
-  150: "hsl(35, 92%, 55%)",
-  200: "hsl(330, 65%, 55%)",
+const ALL_INDICATORS: MovingAverageIndicator[] = [
+  { type: "EMA", period: 20 },
+  { type: "EMA", period: 50 },
+  { type: "EMA", period: 150 },
+  { type: "EMA", period: 200 },
+  { type: "SMA", period: 150 },
+];
+
+function indicatorKey(indicator: MovingAverageIndicator) {
+  return `${indicator.type}${indicator.period}`;
+}
+
+const MA_COLORS: Record<string, string> = {
+  EMA20: "hsl(200, 80%, 50%)",
+  EMA50: "hsl(280, 65%, 60%)",
+  EMA150: "hsl(35, 92%, 55%)",
+  EMA200: "hsl(330, 65%, 55%)",
+  SMA150: "hsl(150, 60%, 45%)",
 };
 
 const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
-  const [selectedMAs, setSelectedMAs] = useState<number[]>([20, 50]);
+  const [selectedIndicators, setSelectedIndicators] = useState<MovingAverageIndicator[]>([
+    { type: "EMA", period: 20 },
+    { type: "EMA", period: 50 },
+  ]);
 
   const chartData = useMemo(() => {
-    const emas: Record<number, { date: string; value: number }[]> = {};
-    for (const period of [20, 50, 150, 200]) {
-      emas[period] = calcEMA(data, period);
+    const series: Record<string, { date: string; value: number }[]> = {};
+    for (const indicator of ALL_INDICATORS) {
+      const key = indicatorKey(indicator);
+      series[key] = indicator.type === "SMA" ? calcSMA(data, indicator.period) : calcEMA(data, indicator.period);
     }
 
     return data.map((point, i) => {
@@ -37,16 +54,19 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
         date: point.date,
         close: point.close,
       };
-      for (const period of [20, 50, 150, 200]) {
-        row[`ema${period}`] = emas[period][i]?.value ?? null;
+      for (const indicator of ALL_INDICATORS) {
+        const key = indicatorKey(indicator);
+        row[key] = series[key][i]?.value ?? null;
       }
       return row;
     });
   }, [data]);
 
-  const toggleMA = (period: number) => {
-    setSelectedMAs((prev) =>
-      prev.includes(period) ? prev.filter((p) => p !== period) : [...prev, period]
+  const toggleIndicator = (indicator: MovingAverageIndicator) => {
+    setSelectedIndicators((prev) =>
+      prev.some((i) => indicatorKey(i) === indicatorKey(indicator))
+        ? prev.filter((i) => indicatorKey(i) !== indicatorKey(indicator))
+        : [...prev, indicator]
     );
   };
 
@@ -55,17 +75,20 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h3 className="text-lg font-bold text-foreground font-mono">{symbol} — 1 Year Chart</h3>
         <div className="flex items-center gap-4 flex-wrap">
-          {[20, 50, 150, 200].map((period) => (
-            <label key={period} className="flex items-center gap-2 text-sm cursor-pointer">
-              <Checkbox
-                checked={selectedMAs.includes(period)}
-                onCheckedChange={() => toggleMA(period)}
-              />
-              <span className="font-mono" style={{ color: MA_COLORS[period] }}>
-                EMA {period}
-              </span>
-            </label>
-          ))}
+          {ALL_INDICATORS.map((indicator) => {
+            const key = indicatorKey(indicator);
+            return (
+              <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
+                <Checkbox
+                  checked={selectedIndicators.some((i) => indicatorKey(i) === key)}
+                  onCheckedChange={() => toggleIndicator(indicator)}
+                />
+                <span className="font-mono" style={{ color: MA_COLORS[key] }}>
+                  {indicator.type} {indicator.period}
+                </span>
+              </label>
+            );
+          })}
         </div>
       </div>
 
@@ -106,18 +129,21 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
             dot={false}
             name="Close"
           />
-          {selectedMAs.map((period) => (
-            <Line
-              key={period}
-              type="monotone"
-              dataKey={`ema${period}`}
-              stroke={MA_COLORS[period]}
-              strokeWidth={1.5}
-              dot={false}
-              strokeDasharray="5 5"
-              name={`EMA ${period}`}
-            />
-          ))}
+          {selectedIndicators.map((indicator) => {
+            const key = indicatorKey(indicator);
+            return (
+              <Line
+                key={key}
+                type="monotone"
+                dataKey={key}
+                stroke={MA_COLORS[key]}
+                strokeWidth={1.5}
+                dot={false}
+                strokeDasharray="5 5"
+                name={`${indicator.type} ${indicator.period}`}
+              />
+            );
+          })}
         </LineChart>
       </ResponsiveContainer>
     </div>

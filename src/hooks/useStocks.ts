@@ -1,7 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { apiFetch } from "@/lib/apiClient";
 import { useAuth } from "@/contexts/AuthContext";
-import { fetchStockData, type StockDataPoint } from "@/lib/stockApi";
+import { fetchStockData } from "@/lib/stockApi";
+import type { UserStock, UserTrade } from "@/lib/types";
 
 export function useUserStocks() {
   const { user } = useAuth();
@@ -10,13 +11,7 @@ export function useUserStocks() {
     queryKey: ["user-stocks", user?.id],
     queryFn: async () => {
       if (!user) return [];
-      const { data, error } = await supabase
-        .from("user_stocks")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("added_at", { ascending: true });
-      if (error) throw error;
-      return data;
+      return apiFetch<UserStock[]>("/stocks");
     },
     enabled: !!user,
   });
@@ -29,10 +24,10 @@ export function useAddStock() {
   return useMutation({
     mutationFn: async (symbol: string) => {
       if (!user) throw new Error("Not authenticated");
-      const { error } = await supabase
-        .from("user_stocks")
-        .insert({ user_id: user.id, symbol: symbol.toUpperCase() });
-      if (error) throw error;
+      await apiFetch("/stocks", {
+        method: "POST",
+        body: JSON.stringify({ symbol: symbol.toUpperCase() }),
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["user-stocks"] });
@@ -48,12 +43,7 @@ export function useRemoveStock() {
   return useMutation({
     mutationFn: async (symbol: string) => {
       if (!user) throw new Error("Not authenticated");
-      const { error } = await supabase
-        .from("user_stocks")
-        .delete()
-        .eq("user_id", user.id)
-        .eq("symbol", symbol.toUpperCase());
-      if (error) throw error;
+      await apiFetch(`/stocks/${symbol.toUpperCase()}`, { method: "DELETE" });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["user-stocks"] });
@@ -81,13 +71,7 @@ export function useUserTrades() {
     queryKey: ["user-trades", user?.id],
     queryFn: async () => {
       if (!user) return [];
-      const { data, error } = await supabase
-        .from("user_trades")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("buy_date", { ascending: false });
-      if (error) throw error;
-      return data;
+      return apiFetch<UserTrade[]>("/trades");
     },
     enabled: !!user,
   });
@@ -107,10 +91,10 @@ export function useAddTrade() {
       notes?: string;
     }) => {
       if (!user) throw new Error("Not authenticated");
-      const { error } = await supabase
-        .from("user_trades")
-        .insert({ ...trade, user_id: user.id, symbol: trade.symbol.toUpperCase() });
-      if (error) throw error;
+      await apiFetch("/trades", {
+        method: "POST",
+        body: JSON.stringify({ ...trade, symbol: trade.symbol.toUpperCase() }),
+      });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["user-trades"] }),
   });
@@ -123,12 +107,7 @@ export function useDeleteTrade() {
   return useMutation({
     mutationFn: async (tradeId: string) => {
       if (!user) throw new Error("Not authenticated");
-      const { error } = await supabase
-        .from("user_trades")
-        .delete()
-        .eq("id", tradeId)
-        .eq("user_id", user.id);
-      if (error) throw error;
+      await apiFetch(`/trades/${tradeId}`, { method: "DELETE" });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["user-trades"] }),
   });

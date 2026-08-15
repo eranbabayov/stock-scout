@@ -50,9 +50,9 @@ const TradesPanel: React.FC = () => {
   };
 
   const getPnL = (trade: any) => {
-    if (!trade.sell_price) return null;
-    const pnl = trade.sell_price - trade.buy_price;
-    const pnlPercent = (pnl / trade.buy_price) * 100;
+    if (!trade.sellPrice) return null;
+    const pnl = trade.sellPrice - trade.buyPrice;
+    const pnlPercent = (pnl / trade.buyPrice) * 100;
     return { pnl: Math.round(pnl * 100) / 100, pnlPercent: Math.round(pnlPercent * 100) / 100 };
   };
 
@@ -109,12 +109,12 @@ const TradesPanel: React.FC = () => {
                 return (
                   <tr key={trade.id} className="border-b border-border/50 hover:bg-muted/30">
                     <td className="py-3 font-mono font-bold text-foreground">{trade.symbol}</td>
-                    <td className="py-3 text-right font-mono text-foreground">${trade.buy_price.toFixed(2)}</td>
-                    <td className="py-3 text-muted-foreground">{trade.buy_date}</td>
+                    <td className="py-3 text-right font-mono text-foreground">${trade.buyPrice.toFixed(2)}</td>
+                    <td className="py-3 text-muted-foreground">{trade.buyDate}</td>
                     <td className="py-3 text-right font-mono text-foreground">
-                      {trade.sell_price ? `$${trade.sell_price.toFixed(2)}` : "—"}
+                      {trade.sellPrice ? `$${trade.sellPrice.toFixed(2)}` : "—"}
                     </td>
-                    <td className="py-3 text-muted-foreground">{trade.sell_date || "—"}</td>
+                    <td className="py-3 text-muted-foreground">{trade.sellDate || "—"}</td>
                     <td className={`py-3 text-right font-mono ${pnl ? (pnl.pnl >= 0 ? "price-up" : "price-down") : "text-muted-foreground"}`}>
                       {pnl ? `${pnl.pnl >= 0 ? "+" : ""}$${pnl.pnl.toFixed(2)} (${pnl.pnlPercent.toFixed(1)}%)` : "Open"}
                     </td>
