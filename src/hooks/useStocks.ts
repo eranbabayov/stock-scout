@@ -84,6 +84,8 @@ export function useAddTrade() {
   return useMutation({
     mutationFn: async (trade: {
       symbol: string;
+      direction: "long" | "short";
+      quantity: number;
       buy_price: number;
       buy_date: string;
       sell_price?: number;
@@ -94,6 +96,34 @@ export function useAddTrade() {
       await apiFetch("/trades", {
         method: "POST",
         body: JSON.stringify({ ...trade, symbol: trade.symbol.toUpperCase() }),
+      });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["user-trades"] }),
+  });
+}
+
+export function useUpdateTrade() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...trade
+    }: {
+      id: string;
+      direction?: "long" | "short";
+      quantity?: number;
+      buy_price?: number;
+      buy_date?: string;
+      sell_price?: number | null;
+      sell_date?: string | null;
+      notes?: string | null;
+    }) => {
+      if (!user) throw new Error("Not authenticated");
+      await apiFetch(`/trades/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(trade),
       });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["user-trades"] }),

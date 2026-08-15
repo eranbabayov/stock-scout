@@ -1,4 +1,6 @@
-import { pgTable, uuid, text, timestamp, doublePrecision, bigint, date, unique, index } from "drizzle-orm/pg-core";
+import { pgTable, pgEnum, uuid, text, timestamp, doublePrecision, bigint, date, unique, index } from "drizzle-orm/pg-core";
+
+export const tradeDirectionEnum = pgEnum("trade_direction", ["long", "short"]);
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -46,6 +48,8 @@ export const userTrades = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     symbol: text("symbol").notNull(),
+    direction: tradeDirectionEnum("direction").notNull().default("long"),
+    quantity: doublePrecision("quantity").notNull().default(1),
     buyPrice: doublePrecision("buy_price").notNull(),
     buyDate: date("buy_date").notNull(),
     sellPrice: doublePrecision("sell_price"),
