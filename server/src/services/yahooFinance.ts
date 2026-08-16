@@ -204,3 +204,30 @@ export async function validateStock(symbol: string): Promise<{ valid: boolean; s
 
   return { valid, symbol: upperSymbol };
 }
+
+// The live comparison price for alerts (server/src/services/alerts.ts) — the
+// chart endpoint's `meta` block carries the latest quoted price regardless of
+// the requested range/interval, so this is a cheap fetch with no historical
+// array to parse or cache.
+export async function getCurrentPrice(symbol: string): Promise<number | null> {
+  const upperSymbol = symbol.toUpperCase();
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${upperSymbol}?range=1d&interval=1d`;
+
+  let yahooRes: Response;
+  try {
+    yahooRes = await yahooLimiter.run(() =>
+      fetch(url, {
+        headers: { "User-Agent": "Mozilla/5.0" },
+        signal: AbortSignal.timeout(YAHOO_FETCH_TIMEOUT_MS),
+      })
+    );
+  } catch {
+    return null;
+  }
+  if (!yahooRes.ok) return null;
+
+  const data = (await yahooRes.json()) as {
+    chart?: { result?: Array<{ meta?: { regularMarketPrice?: number } }> };
+  };
+  return data.chart?.result?.[0]?.meta?.regularMarketPrice ?? null;
+}

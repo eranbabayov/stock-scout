@@ -6,6 +6,7 @@ dotenv.config({ path: "server/.env" });
 // module (e.g. lib/jwt.ts, db/index.ts) reads it at module-load time.
 const { createApp } = await import("./app");
 const { startTelegramBot } = await import("./services/telegramBot");
+const { startAlertChecker } = await import("./services/alertChecker");
 
 const port = Number(process.env.PORT ?? 4000);
 const app = createApp();
@@ -17,3 +18,5 @@ app.listen(port, () => {
 startTelegramBot().catch((err) => {
   console.error("Telegram bot stopped unexpectedly:", err);
 });
+
+startAlertChecker();

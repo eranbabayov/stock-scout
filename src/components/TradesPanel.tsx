@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { useUserTrades, useAddTrade, useUpdateTrade, useDeleteTrade } from "@/hooks/useStocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import SymbolAutocomplete from "@/components/SymbolAutocomplete";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -270,15 +271,17 @@ const TradesPanel: React.FC = () => {
           <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="trade-symbol">Symbol</Label>
-              <Input
-                id="trade-symbol"
-                placeholder="AAPL"
-                value={form.symbol}
-                onChange={(e) => setForm({ ...form, symbol: e.target.value })}
-                required
-                className="font-mono"
-                disabled={!!editingId}
-              />
+              {editingId ? (
+                <Input id="trade-symbol" value={form.symbol} required className="font-mono" disabled />
+              ) : (
+                <SymbolAutocomplete
+                  id="trade-symbol"
+                  placeholder="AAPL"
+                  value={form.symbol}
+                  onChange={(symbol) => setForm({ ...form, symbol })}
+                  required
+                />
+              )}
             </div>
 
             <div className="space-y-1.5">

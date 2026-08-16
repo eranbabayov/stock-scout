@@ -26,9 +26,9 @@ interface StockChartProps {
 const MA_COLORS: Record<string, string> = {
   EMA20: "hsl(200, 80%, 50%)",
   EMA50: "hsl(280, 65%, 60%)",
-  EMA150: "hsl(35, 92%, 55%)",
+  EMA150: "hsl(150, 60%, 45%)",
   EMA200: "hsl(330, 65%, 55%)",
-  SMA150: "hsl(150, 60%, 45%)",
+  SMA150: "hsl(35, 92%, 55%)",
 };
 
 const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {

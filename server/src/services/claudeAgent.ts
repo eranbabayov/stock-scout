@@ -7,6 +7,13 @@ import { userStocks } from "../db/schema";
 import { fetchStockData, type StockRow } from "./yahooFinance";
 import { addStockToWatchlist, removeStockFromWatchlist, MAX_BATCH_SIZE } from "./watchlist";
 import {
+  getOrCreateDefaultListId,
+  resolveOrCreateListByName,
+  findListByName,
+  listLists as listWatchlistListsService,
+  createList as createWatchlistList,
+} from "./watchlistLists";
+import {
   addTrade,
   listTrades,
   findOpenTradesBySymbol,
@@ -14,7 +21,9 @@ import {
   updateTrade,
   deleteTrade,
 } from "./trades";
-import type { UserTrade } from "../db/schema";
+import { getPlaybookRules, addPlaybookRule } from "./agentPlaybook";
+import { createPriceAlert, createMovingAverageAlert, listAlerts, deleteAlert, findActiveAlertsBySymbol } from "./alerts";
+import type { UserTrade, StockAlert } from "../db/schema";
 import {
   type StockDataPoint,
   type MovingAverageIndicator,
@@ -24,6 +33,26 @@ import {
 
 const AGENT_MAX_ITERATIONS = 10;
 const AGENT_TIMEOUT_MS = 60_000;
+
+// Routine requests stay on the cheap/fast model; only ones it explicitly
+// escalates go to the stronger (and more expensive) one.
+const WEAK_MODEL = "claude-haiku-4-5";
+const STRONG_MODEL = "claude-sonnet-5";
+
+// Sentinel the weak model is instructed to reply with, verbatim and with no
+// tool calls, when a request is too complex/ambiguous for it even with the
+// playbook. Detected via exact match, never shown to the user.
+const ESCALATE = "ESCALATE";
+
+// Sentinel either model replies with, verbatim and with no tool calls, when
+// the chat is in read-only mode (see `mode` below) and the request needs a
+// write tool that simply isn't in its tool list. Re-exported as a distinct
+// constant so telegramConversation.ts can detect it without depending on the
+// literal model output string itself.
+const NEEDS_REVERIFICATION_SENTINEL = "NEEDS_REVERIFICATION";
+export const NEEDS_REVERIFICATION = "__NEEDS_REVERIFICATION__";
+
+export type AgentMode = "full" | "readonly";
 
 let client: Anthropic | null = null;
 
@@ -64,20 +93,46 @@ function formatTrade(trade: UserTrade): string {
   return `${base}, sold $${trade.sellPrice} on ${trade.sellDate} — P&L ${pnl >= 0 ? "+" : ""}$${pnl} (${pnlPercent}%)`;
 }
 
-function buildTools(userId: string) {
+function formatAlert(alert: StockAlert): string {
+  const condition =
+    alert.kind === "price"
+      ? `hits $${alert.targetPrice}`
+      : `crosses ${alert.direction} its ${alert.indicatorPeriod}-day ${alert.indicatorType}`;
+  const status = alert.status === "triggered" ? ` — triggered ${alert.triggeredAt?.toISOString().split("T")[0]}` : "";
+  return `${alert.symbol}: alert when it ${condition}${status}`;
+}
+
+// betaZodTool's return type is generic per input schema (BetaRunnableTool<Shape>),
+// so an array mixing several distinct tools needs a common element type — the
+// SDK's own toolRunner `tools` param uses BetaRunnableTool<any> for exactly
+// this reason, and there's no narrower type that's both public and accurate
+// for a heterogeneous tool list. Each tool's own `run` is still fully typed
+// against its own inputSchema at its definition site above; only this
+// aggregation step loses precision.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyAgentTool = ReturnType<typeof betaZodTool<z.ZodType<any>>>;
+
+function buildTools(userId: string, mode: AgentMode, includePlaybookTool: boolean): AnyAgentTool[] {
   const addStock = betaZodTool({
     name: "add_stocks_to_watchlist",
     description:
       `Add one or more stock symbols to the user's watchlist in a single call (max ${MAX_BATCH_SIZE} per call, ` +
       "and the watchlist itself has a size limit). Validates each symbol is a real, tradeable ticker first. " +
-      "Pass every symbol the user wants added at once — don't call this tool once per symbol.",
+      "The user can organize stocks into separate named lists (e.g. \"SOXX\", \"Tech stocks\") — pass list_name " +
+      "to target one; it's created automatically if it doesn't exist yet. Omit list_name to use the default " +
+      "watchlist. Pass every symbol the user wants added at once — don't call this tool once per symbol.",
     inputSchema: z.object({
       symbols: z
         .array(z.string())
         .min(1)
         .describe("Stock tickers to add, e.g. [\"AAPL\", \"MSFT\", \"NVDA\"]"),
+      list_name: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("Name of the list to add to, e.g. \"SOXX\". Created automatically if new. Omit for the default watchlist."),
     }),
-    run: async ({ symbols }) => {
+    run: async ({ symbols, list_name }) => {
       if (symbols.length > MAX_BATCH_SIZE) {
         return (
           `That's ${symbols.length} symbols, but I can only process ${MAX_BATCH_SIZE} at a time. ` +
@@ -85,15 +140,28 @@ function buildTools(userId: string) {
         );
       }
 
+      let listId: string;
+      if (list_name) {
+        const resolved = await resolveOrCreateListByName(userId, list_name);
+        if (!resolved.ok) {
+          return resolved.reason === "limit_reached"
+            ? "You've reached the maximum number of lists — remove one first."
+            : "That list name isn't valid.";
+        }
+        listId = resolved.list.id;
+      } else {
+        listId = await getOrCreateDefaultListId(userId);
+      }
+
       const results: string[] = [];
       for (const raw of symbols) {
         const upperSymbol = raw.toUpperCase();
-        const outcome = await addStockToWatchlist(userId, upperSymbol);
+        const outcome = await addStockToWatchlist(userId, upperSymbol, listId);
         const label =
           outcome === "added"
             ? "added"
             : outcome === "duplicate"
-            ? "already on watchlist"
+            ? "already on that list"
             : outcome === "limit_reached"
             ? "skipped — watchlist is full"
             : "not a valid symbol";
@@ -108,11 +176,13 @@ function buildTools(userId: string) {
     name: "remove_stocks_from_watchlist",
     description:
       `Remove one or more stock symbols from the user's watchlist in a single call (max ${MAX_BATCH_SIZE} per ` +
-      "call). Pass every symbol the user wants removed at once — don't call this tool once per symbol.",
+      "call). Pass list_name to remove from a specific named list instead of the default watchlist. Pass every " +
+      "symbol the user wants removed at once — don't call this tool once per symbol.",
     inputSchema: z.object({
       symbols: z.array(z.string()).min(1).describe("Stock tickers to remove, e.g. [\"AAPL\", \"MSFT\"]"),
+      list_name: z.string().nullable().optional().describe("Name of the list to remove from. Omit for the default watchlist."),
     }),
-    run: async ({ symbols }) => {
+    run: async ({ symbols, list_name }) => {
       if (symbols.length > MAX_BATCH_SIZE) {
         return (
           `That's ${symbols.length} symbols, but I can only process ${MAX_BATCH_SIZE} at a time. ` +
@@ -120,11 +190,20 @@ function buildTools(userId: string) {
         );
       }
 
+      let listId: string;
+      if (list_name) {
+        const list = await findListByName(userId, list_name);
+        if (!list) return `No list named "${list_name}" — check list_watchlist_lists for the exact name.`;
+        listId = list.id;
+      } else {
+        listId = await getOrCreateDefaultListId(userId);
+      }
+
       const results: string[] = [];
       for (const raw of symbols) {
         const upperSymbol = raw.toUpperCase();
-        const outcome = await removeStockFromWatchlist(userId, upperSymbol);
-        results.push(`${upperSymbol}: ${outcome === "removed" ? "removed" : "wasn't on watchlist"}`);
+        const outcome = await removeStockFromWatchlist(userId, upperSymbol, listId);
+        results.push(`${upperSymbol}: ${outcome === "removed" ? "removed" : "wasn't on that list"}`);
       }
 
       return results.join("\n");
@@ -133,11 +212,45 @@ function buildTools(userId: string) {
 
   const listWatchlist = betaZodTool({
     name: "list_watchlist",
-    description: "List every stock symbol currently on the user's watchlist.",
+    description: "List every stock symbol currently on the user's watchlist, across all their lists combined.",
     inputSchema: z.object({}),
     run: async () => {
       const symbols = await getWatchlistSymbols(userId);
       return symbols.length > 0 ? symbols.join(", ") : "The watchlist is empty.";
+    },
+  });
+
+  const listWatchlistLists = betaZodTool({
+    name: "list_watchlist_lists",
+    description:
+      "List the user's named watchlist lists (e.g. \"SOXX\", \"Tech stocks\") and which symbols are in each one.",
+    inputSchema: z.object({}),
+    run: async () => {
+      const lists = await listWatchlistListsService(userId);
+      if (lists.length === 0) return "No lists yet.";
+      return lists
+        .map((l) => `${l.name}${l.isDefault ? " (default)" : ""}: ${l.symbols.length > 0 ? l.symbols.join(", ") : "empty"}`)
+        .join("\n");
+    },
+  });
+
+  const createWatchlistListTool = betaZodTool({
+    name: "create_watchlist_list",
+    description:
+      "Create a new named watchlist list (e.g. \"SOXX\", \"Tech stocks\") with no stocks in it yet. Not needed " +
+      "before add_stocks_to_watchlist — that creates the list automatically if list_name is new. Use this when " +
+      "the user just wants an empty list created.",
+    inputSchema: z.object({
+      name: z.string().describe("Name for the new list"),
+    }),
+    run: async ({ name }) => {
+      const result = await createWatchlistList(userId, name);
+      if (!result.ok) {
+        return result.reason === "limit_reached"
+          ? "You've reached the maximum number of lists — remove one first."
+          : "A list name is required.";
+      }
+      return `Created list "${result.list.name}".`;
     },
   });
 
@@ -292,47 +405,232 @@ function buildTools(userId: string) {
     },
   });
 
-  return [
+  const createPriceAlertTool = betaZodTool({
+    name: "create_price_alert",
+    description:
+      "Create a one-shot alert that emails the user once a stock reaches a specific target price. Which " +
+      "direction (rising to it or falling to it) is figured out automatically from the current price — just " +
+      "give the target. The alert fires once, then stops (create a new one to keep watching that level).",
+    inputSchema: z.object({
+      symbol: z.string().describe("Stock ticker, e.g. AAPL"),
+      target_price: z.number().positive(),
+    }),
+    run: async ({ symbol, target_price }) => {
+      const result = await createPriceAlert(userId, symbol, target_price);
+      if (!result.ok) {
+        const messages: Record<string, string> = {
+          invalid_symbol: `"${symbol}" doesn't look like a valid stock symbol.`,
+          limit_reached: "You've reached the maximum number of active alerts — remove one first.",
+          no_price_data: `Couldn't fetch current price data for ${symbol.toUpperCase()} right now.`,
+        };
+        return messages[result.reason] ?? "Couldn't create that alert.";
+      }
+      return `Alert set: ${formatAlert(result.alert)}`;
+    },
+  });
+
+  const createMaAlertTool = betaZodTool({
+    name: "create_ma_alert",
+    description:
+      "Create a one-shot alert that emails the user once a stock's price crosses one of its moving averages " +
+      "(e.g. 'alert me when TSLA crosses its 50-day EMA'). Which direction counts as a cross is figured out " +
+      "automatically from the current price/MA relationship. Fires once, then stops.",
+    inputSchema: z.object({
+      symbol: z.string().describe("Stock ticker, e.g. TSLA"),
+      indicator_type: z.enum(["EMA", "SMA"]),
+      indicator_period: z.number().int().positive().describe("e.g. 50 for a 50-day average"),
+    }),
+    run: async ({ symbol, indicator_type, indicator_period }) => {
+      const result = await createMovingAverageAlert(userId, symbol, indicator_type, indicator_period);
+      if (!result.ok) {
+        const messages: Record<string, string> = {
+          invalid_symbol: `"${symbol}" doesn't look like a valid stock symbol.`,
+          limit_reached: "You've reached the maximum number of active alerts — remove one first.",
+          no_price_data: `Couldn't fetch enough price history for ${symbol.toUpperCase()} to compute that average right now.`,
+        };
+        return messages[result.reason] ?? "Couldn't create that alert.";
+      }
+      return `Alert set: ${formatAlert(result.alert)}`;
+    },
+  });
+
+  const listAlertsTool = betaZodTool({
+    name: "list_alerts",
+    description: "List every price/moving-average alert the user has set, including already-triggered ones.",
+    inputSchema: z.object({}),
+    run: async () => {
+      const alerts = await listAlerts(userId);
+      return alerts.length > 0 ? alerts.map(formatAlert).join("\n") : "No alerts set.";
+    },
+  });
+
+  const cancelAlertTool = betaZodTool({
+    name: "cancel_alert",
+    description:
+      "Cancel an active (not yet triggered) alert for a symbol. If more than one active alert matches the " +
+      "symbol, lists them so the user can clarify which one.",
+    inputSchema: z.object({
+      symbol: z.string(),
+    }),
+    run: async ({ symbol }) => {
+      const matches = await findActiveAlertsBySymbol(userId, symbol);
+      if (matches.length === 0) return `No active alert found for ${symbol.toUpperCase()}.`;
+      if (matches.length > 1) {
+        return (
+          `There are ${matches.length} active alerts for ${symbol.toUpperCase()}:\n` +
+          matches.map(formatAlert).join("\n") +
+          "\nUse the web app to cancel a specific one."
+        );
+      }
+
+      await deleteAlert(userId, matches[0].id);
+      return `Cancelled: ${formatAlert(matches[0])}`;
+    },
+  });
+
+  const recordPlaybookRule = betaZodTool({
+    name: "record_playbook_rule",
+    description:
+      "Save a short, generalized rule describing how to handle this TYPE of request, so a cheaper/faster " +
+      "assistant can handle similar future requests itself instead of escalating. Call this once, after you've " +
+      "finished handling the user's request — but only if the pattern is likely to recur; skip it for a genuine " +
+      "one-off. Keep it generic: describe the pattern and procedure, not this specific user's exact numbers or " +
+      "tickers.",
+    inputSchema: z.object({
+      trigger_summary: z.string().describe("Short description of the kind of request this rule applies to"),
+      rule_text: z.string().describe("The generalized guidance/procedure to follow for that kind of request"),
+    }),
+    run: async ({ trigger_summary, rule_text }) => {
+      await addPlaybookRule(trigger_summary, rule_text);
+      return "Saved to the playbook.";
+    },
+  });
+
+  // Write tools are structurally absent from the request in readonly mode —
+  // not just discouraged by the prompt — so the model literally cannot call
+  // them regardless of how it interprets the instructions.
+  const readOnlyTools: AnyAgentTool[] = [listWatchlist, listWatchlistLists, screenWatchlist, listTradesTool, listAlertsTool];
+  const writeTools: AnyAgentTool[] = [
     addStock,
     removeStock,
-    listWatchlist,
-    screenWatchlist,
+    createWatchlistListTool,
     addTradeTool,
-    listTradesTool,
     closeTradeTool,
     removeTradeTool,
+    createPriceAlertTool,
+    createMaAlertTool,
+    cancelAlertTool,
   ];
+  const tools = mode === "full" ? [...readOnlyTools, ...writeTools] : readOnlyTools;
+  if (includePlaybookTool) tools.push(recordPlaybookRule);
+  return tools;
 }
 
 const SYSTEM_PROMPT =
   "You are the Stock Scout Telegram assistant. The user manages their stock watchlist, screens it for " +
-  "moving-average/Fibonacci setups, and logs trades in their trade journal — all by chatting with you in " +
-  "plain English. Use the available tools to actually perform actions — never claim to have done something " +
-  "without calling the matching tool. The watchlist and the trade journal are separate things: 'add AAPL' " +
-  "means the watchlist; 'I bought AAPL at 150' or 'log a trade' means the trade journal. When the user " +
-  "names a category or theme instead of exact tickers (e.g. \"add 20 tech stocks\", \"add some EV makers\"), " +
-  "pick specific real, well-known ticker symbols yourself from your own knowledge — don't ask the user to " +
-  "list them. Always pass every symbol for a watchlist add/remove request in a single tool call, not one call " +
-  "per symbol. Keep replies short and mobile-friendly: plain text, no markdown tables, no headers.";
+  "moving-average/Fibonacci setups, logs trades in their trade journal, and sets price/moving-average alerts " +
+  "— all by chatting with you in plain English. Use the available tools to actually perform actions — never " +
+  "claim to have done something without calling the matching tool. The watchlist, the trade journal, and " +
+  "alerts are three separate things: 'add AAPL' means the watchlist; 'I bought AAPL at 150' or 'log a trade' " +
+  "means the trade journal; 'alert me when AAPL hits 200' or 'tell me if TSLA crosses its 50-day EMA' means " +
+  "an alert. Alerts are one-shot — they email the user once, then stop; mention that when confirming one. " +
+  "The watchlist can be organized into separate named lists (e.g. \"SOXX\", \"Tech stocks\") — you DO support " +
+  "this. 'create a list called X', 'add AAPL to my Tech list', 'what's in my SOXX list' all work: pass " +
+  "list_name to add_stocks_to_watchlist/remove_stocks_from_watchlist (it's created automatically if new), or " +
+  "use create_watchlist_list / list_watchlist_lists directly. Never tell the user this isn't supported. " +
+  "When the user names a category or theme instead of exact tickers (e.g. \"add 20 tech stocks\", \"add some " +
+  "EV makers\"), pick specific real, well-known ticker symbols yourself from your own knowledge — don't ask " +
+  "the user to list them. Always pass every symbol for a watchlist add/remove request in a single tool call, " +
+  "not one call per symbol. Keep replies short and mobile-friendly: plain text, no markdown tables, no headers.";
 
-export async function runAgent(userId: string, message: string): Promise<string> {
+function extractText(message: Anthropic.Beta.BetaMessage): string {
+  return message.content
+    .filter((block): block is Anthropic.Beta.BetaTextBlock => block.type === "text")
+    .map((block) => block.text)
+    .join("\n")
+    .trim();
+}
+
+function isSentinel(text: string, sentinel: string): boolean {
+  return text.toLowerCase() === sentinel.toLowerCase();
+}
+
+async function runOnce(
+  model: string,
+  system: string,
+  tools: ReturnType<typeof buildTools>,
+  message: string
+): Promise<string> {
   const anthropic = getClient();
-
-  const finalMessage = await anthropic.beta.messages.toolRunner(
+  const result = await anthropic.beta.messages.toolRunner(
     {
-      model: "claude-haiku-4-5",
+      model,
       max_tokens: 4096,
       max_iterations: AGENT_MAX_ITERATIONS,
-      system: SYSTEM_PROMPT,
-      tools: buildTools(userId),
+      system,
+      tools,
       messages: [{ role: "user", content: message }],
     },
     { signal: AbortSignal.timeout(AGENT_TIMEOUT_MS) }
   );
+  return extractText(result);
+}
 
-  return finalMessage.content
-    .filter((block): block is Anthropic.Beta.BetaTextBlock => block.type === "text")
-    .map((block) => block.text)
-    .join("\n")
-    .trim() || "OK.";
+/**
+ * Runs the user's message through the cheap model first; escalates to the
+ * strong model only if the cheap model can't confidently handle it (even
+ * with the playbook). `mode` is orthogonal to that routing — "readonly"
+ * strips write tools from *both* tiers and asks whichever model runs to flag
+ * write attempts instead of quietly failing, so the caller can trigger
+ * step-up re-verification (see telegramConversation.ts).
+ */
+export async function runAgent(userId: string, message: string, mode: AgentMode = "full"): Promise<string> {
+  const playbook = await getPlaybookRules();
+  const playbookSection =
+    playbook.length > 0
+      ? "\n\nPLAYBOOK (rules learned from harder past requests — apply them directly when relevant instead of " +
+        "re-deriving from scratch):\n" +
+        playbook.map((r) => `- ${r.triggerSummary}: ${r.ruleText}`).join("\n")
+      : "";
+
+  const modeNote =
+    mode === "readonly"
+      ? "\n\nIMPORTANT: This chat session has been idle and is currently READ-ONLY — the tools that add, remove, " +
+        "or modify anything are not available to you right now. If the user's request needs one of those " +
+        `actions, don't explain or apologize — reply with EXACTLY "${NEEDS_REVERIFICATION_SENTINEL}" and nothing ` +
+        "else, and call no tools. Otherwise, answer normally with the read-only tools you do have."
+      : "";
+
+  const escalateNote =
+    "\n\nIf this request is too complex, ambiguous, or unusual for you to confidently handle — even with the " +
+    `playbook above — reply with EXACTLY "${ESCALATE}" as your ENTIRE reply, before calling any tools, and a ` +
+    "more capable assistant will take over.";
+
+  const baseSystem = SYSTEM_PROMPT + playbookSection + modeNote + escalateNote;
+  const weakTools = buildTools(userId, mode, false);
+
+  let text = await runOnce(WEAK_MODEL, baseSystem, weakTools, message);
+
+  if (mode === "readonly" && isSentinel(text, NEEDS_REVERIFICATION_SENTINEL)) {
+    return NEEDS_REVERIFICATION;
+  }
+
+  if (isSentinel(text, ESCALATE)) {
+    const strongSystem =
+      SYSTEM_PROMPT +
+      playbookSection +
+      modeNote +
+      "\n\nA cheaper assistant escalated this request to you because it's complex. After fully handling it with " +
+      "the tools available, call record_playbook_rule ONCE to save a short, generalized rule so the cheaper " +
+      "assistant can handle similar requests itself next time — skip this only if the request was a genuine " +
+      "one-off unlikely to recur.";
+    const strongTools = buildTools(userId, mode, true);
+    text = await runOnce(STRONG_MODEL, strongSystem, strongTools, message);
+
+    if (mode === "readonly" && isSentinel(text, NEEDS_REVERIFICATION_SENTINEL)) {
+      return NEEDS_REVERIFICATION;
+    }
+  }
+
+  return text || "OK.";
 }

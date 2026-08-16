@@ -1,12 +1,16 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import SymbolAutocomplete from "@/components/SymbolAutocomplete";
 import { Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAddStock } from "@/hooks/useStocks";
 import { validateStock } from "@/lib/stockApi";
 
-const AddStockForm: React.FC = () => {
+interface AddStockFormProps {
+  listId: string;
+}
+
+const AddStockForm: React.FC<AddStockFormProps> = ({ listId }) => {
   const [symbol, setSymbol] = useState("");
   const [validating, setValidating] = useState(false);
   const addStock = useAddStock();
@@ -26,16 +30,11 @@ const AddStockForm: React.FC = () => {
     }
 
     try {
-      await addStock.mutateAsync(s);
-      toast.success(`${s} added to your watchlist`);
+      await addStock.mutateAsync({ symbol: s, listId });
+      toast.success(`${s} added`);
       setSymbol("");
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message.includes("duplicate")) {
-        toast.error(`${s} is already in your watchlist`);
-      } else {
-        toast.error(message);
-      }
+      toast.error(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -43,11 +42,10 @@ const AddStockForm: React.FC = () => {
 
   return (
     <form onSubmit={handleSubmit} className="flex gap-2">
-      <Input
+      <SymbolAutocomplete
         value={symbol}
-        onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+        onChange={setSymbol}
         placeholder="Enter stock symbol (e.g. AAPL)"
-        className="font-mono"
         disabled={isLoading}
       />
       <Button type="submit" disabled={isLoading || !symbol.trim()}>
