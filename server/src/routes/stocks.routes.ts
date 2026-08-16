@@ -1,9 +1,10 @@
 import { Router } from "express";
-import { and, asc, eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { userStocks } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import { HttpError } from "../middleware/errorHandler";
+import { addStockToWatchlist, removeStockFromWatchlist } from "../services/watchlist";
 
 export const stocksRouter = Router();
 
@@ -24,25 +25,20 @@ stocksRouter.post("/", async (req, res) => {
     throw new HttpError(400, "symbol is required");
   }
 
-  const upperSymbol = String(symbol).toUpperCase();
-
-  const [existing] = await db
-    .select({ id: userStocks.id })
-    .from(userStocks)
-    .where(and(eq(userStocks.userId, req.user!.id), eq(userStocks.symbol, upperSymbol)))
-    .limit(1);
-  if (existing) {
-    throw new HttpError(409, "Already in watchlist");
+  const result = await addStockToWatchlist(req.user!.id, String(symbol));
+  switch (result) {
+    case "invalid":
+      throw new HttpError(400, `"${String(symbol).toUpperCase()}" is not a valid stock symbol`);
+    case "duplicate":
+      throw new HttpError(409, "Already in watchlist");
+    case "limit_reached":
+      throw new HttpError(409, "Watchlist is at its size limit");
+    case "added":
+      res.status(201).json({ success: true });
   }
-
-  await db.insert(userStocks).values({ userId: req.user!.id, symbol: upperSymbol });
-  res.status(201).json({ success: true });
 });
 
 stocksRouter.delete("/:symbol", async (req, res) => {
-  const upperSymbol = req.params.symbol.toUpperCase();
-  await db
-    .delete(userStocks)
-    .where(and(eq(userStocks.userId, req.user!.id), eq(userStocks.symbol, upperSymbol)));
+  await removeStockFromWatchlist(req.user!.id, req.params.symbol);
   res.json({ success: true });
 });

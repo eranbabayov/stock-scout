@@ -58,10 +58,44 @@ export const userTrades = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("idx_user_trades_user_id").on(t.userId)],
+  // Composite index also serves plain userId-only lookups (leftmost-prefix),
+  // so this replaces rather than duplicates a userId-only index. The trade
+  // tools filter by (userId, symbol) on every add_trade/close_trade/remove_trade call.
+  (t) => [index("idx_user_trades_user_symbol").on(t.userId, t.symbol)],
+);
+
+export const telegramLinks = pgTable(
+  "telegram_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    telegramChatId: text("telegram_chat_id").notNull().unique(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    linkedAt: timestamp("linked_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("idx_telegram_links_user_id").on(t.userId)],
+);
+
+export const telegramOtpCodes = pgTable(
+  "telegram_otp_codes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    telegramChatId: text("telegram_chat_id").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    code: text("code").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("idx_telegram_otp_codes_chat_id").on(t.telegramChatId)],
 );
 
 export type User = typeof users.$inferSelect;
 export type UserStock = typeof userStocks.$inferSelect;
 export type StockCache = typeof stockCache.$inferSelect;
 export type UserTrade = typeof userTrades.$inferSelect;
+export type TelegramLink = typeof telegramLinks.$inferSelect;
+export type TelegramOtpCode = typeof telegramOtpCodes.$inferSelect;

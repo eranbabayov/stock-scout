@@ -1,21 +1,14 @@
 import { Router } from "express";
-import { and, desc, eq } from "drizzle-orm";
-import { db } from "../db";
-import { userTrades } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import { HttpError } from "../middleware/errorHandler";
+import { addTrade, listTrades, updateTrade, deleteTrade } from "../services/trades";
 
 export const tradesRouter = Router();
 
 tradesRouter.use(requireAuth);
 
 tradesRouter.get("/", async (req, res) => {
-  const trades = await db
-    .select()
-    .from(userTrades)
-    .where(eq(userTrades.userId, req.user!.id))
-    .orderBy(desc(userTrades.buyDate));
-  res.json(trades);
+  res.json(await listTrades(req.user!.id));
 });
 
 tradesRouter.post("/", async (req, res) => {
@@ -33,12 +26,11 @@ tradesRouter.post("/", async (req, res) => {
     throw new HttpError(400, "quantity must be greater than 0");
   }
 
-  await db.insert(userTrades).values({
-    userId: req.user!.id,
-    symbol: String(symbol).toUpperCase(),
-    direction: direction ?? "long",
-    quantity: quantity != null ? Number(quantity) : 1,
-    buyPrice: buy_price,
+  await addTrade(req.user!.id, {
+    symbol: String(symbol),
+    direction,
+    quantity: quantity != null ? Number(quantity) : undefined,
+    buyPrice: Number(buy_price),
     buyDate: buy_date,
     sellPrice: sell_price ?? null,
     sellDate: sell_date ?? null,
@@ -59,20 +51,15 @@ tradesRouter.patch("/:id", async (req, res) => {
     throw new HttpError(400, "quantity must be greater than 0");
   }
 
-  const updates: Partial<typeof userTrades.$inferInsert> = { updatedAt: new Date() };
-  if (direction != null) updates.direction = direction;
-  if (quantity != null) updates.quantity = Number(quantity);
-  if (buy_price != null) updates.buyPrice = Number(buy_price);
-  if (buy_date != null) updates.buyDate = buy_date;
-  if (sell_price !== undefined) updates.sellPrice = sell_price === null || sell_price === "" ? null : Number(sell_price);
-  if (sell_date !== undefined) updates.sellDate = sell_date === null || sell_date === "" ? null : sell_date;
-  if (notes !== undefined) updates.notes = notes || null;
-
-  const [updated] = await db
-    .update(userTrades)
-    .set(updates)
-    .where(and(eq(userTrades.id, req.params.id), eq(userTrades.userId, req.user!.id)))
-    .returning({ id: userTrades.id });
+  const updated = await updateTrade(req.user!.id, req.params.id, {
+    direction,
+    quantity: quantity != null ? Number(quantity) : undefined,
+    buyPrice: buy_price != null ? Number(buy_price) : undefined,
+    buyDate: buy_date ?? undefined,
+    sellPrice: sell_price !== undefined ? (sell_price === null || sell_price === "" ? null : Number(sell_price)) : undefined,
+    sellDate: sell_date !== undefined ? (sell_date === null || sell_date === "" ? null : sell_date) : undefined,
+    notes: notes !== undefined ? notes || null : undefined,
+  });
 
   if (!updated) {
     throw new HttpError(404, "Trade not found");
@@ -82,8 +69,6 @@ tradesRouter.patch("/:id", async (req, res) => {
 });
 
 tradesRouter.delete("/:id", async (req, res) => {
-  await db
-    .delete(userTrades)
-    .where(and(eq(userTrades.id, req.params.id), eq(userTrades.userId, req.user!.id)));
+  await deleteTrade(req.user!.id, req.params.id);
   res.json({ success: true });
 });

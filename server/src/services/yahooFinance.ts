@@ -1,6 +1,23 @@
 import { and, asc, eq, gte, sql } from "drizzle-orm";
 import { db } from "../db";
 import { stockCache } from "../db/schema";
+import { ConcurrencyLimiter } from "../lib/concurrencyLimiter";
+
+// A hung upstream request (Yahoo Finance) shouldn't be able to block a request
+// indefinitely — cap every outbound fetch and fail fast instead.
+const YAHOO_FETCH_TIMEOUT_MS = 10_000;
+
+// Caps total concurrent outbound Yahoo Finance requests across *all* users
+// and *all* call paths (screening, validation). Without this, a burst of
+// concurrent users with stale caches (e.g. right after market close) could
+// fire far more simultaneous requests than Yahoo tolerates, risking
+// IP-level rate-limiting that would break stock data for everyone.
+const yahooLimiter = new ConcurrencyLimiter(Number(process.env.YAHOO_CONCURRENCY ?? 8));
+
+// Concurrent requests for the same uncached symbol collapse into one
+// upstream call instead of firing duplicates — common when several users
+// are watching the same popular ticker.
+const inFlightFetches = new Map<string, Promise<StockRow[] | { error: string }>>();
 
 interface YahooChartResult {
   timestamp: number[];
@@ -51,21 +68,15 @@ async function getCachedRows(symbol: string): Promise<StockRow[]> {
   return rows as unknown as StockRow[];
 }
 
-async function fetchAndCacheSymbol(symbol: string, period: string): Promise<StockRow[] | { error: string }> {
-  const cachedData = await getCachedRows(symbol);
-
-  const hasRecentData =
-    cachedData.length > 200 && cachedData[cachedData.length - 1]?.date >= getLastTradingDay();
-
-  if (hasRecentData) {
-    return cachedData;
-  }
-
+async function fetchFromYahoo(symbol: string, period: string, cachedData: StockRow[]): Promise<StockRow[] | { error: string }> {
   try {
     const range = period === "1y" ? "1y" : period;
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=${range}&interval=1d`;
 
-    const yahooRes = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+    const yahooRes = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+      signal: AbortSignal.timeout(YAHOO_FETCH_TIMEOUT_MS),
+    });
 
     if (!yahooRes.ok) {
       return { error: `Invalid symbol: ${symbol}` };
@@ -124,25 +135,65 @@ async function fetchAndCacheSymbol(symbol: string, period: string): Promise<Stoc
   }
 }
 
+async function fetchAndCacheSymbol(symbol: string, period: string): Promise<StockRow[] | { error: string }> {
+  const cachedData = await getCachedRows(symbol);
+
+  const hasRecentData =
+    cachedData.length > 200 && cachedData[cachedData.length - 1]?.date >= getLastTradingDay();
+
+  if (hasRecentData) {
+    return cachedData;
+  }
+
+  // Cache is stale/missing — go to the network, but gated by the shared
+  // limiter and de-duplicated against any identical request already in flight.
+  const key = `${symbol}:${period}`;
+  const existing = inFlightFetches.get(key);
+  if (existing) return existing;
+
+  const promise = yahooLimiter.run(() => fetchFromYahoo(symbol, period, cachedData));
+  inFlightFetches.set(key, promise);
+  try {
+    return await promise;
+  } finally {
+    inFlightFetches.delete(key);
+  }
+}
+
 export async function fetchStockData(
   symbols: string[],
   period: string,
 ): Promise<Record<string, StockRow[] | { error: string }>> {
-  const results: Record<string, StockRow[] | { error: string }> = {};
+  // Fired concurrently rather than sequentially — real network concurrency is
+  // still bounded by yahooLimiter above, so this just removes the artificial
+  // serialization that made large screens slow.
+  const entries = await Promise.all(
+    symbols.map(async (symbol) => {
+      const upperSymbol = symbol.toUpperCase();
+      return [upperSymbol, await fetchAndCacheSymbol(upperSymbol, period)] as const;
+    })
+  );
 
-  for (const symbol of symbols) {
-    const upperSymbol = symbol.toUpperCase();
-    results[upperSymbol] = await fetchAndCacheSymbol(upperSymbol, period);
-  }
-
-  return results;
+  return Object.fromEntries(entries);
 }
 
 export async function validateStock(symbol: string): Promise<{ valid: boolean; symbol: string }> {
   const upperSymbol = symbol.toUpperCase();
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${upperSymbol}?range=5d&interval=1d`;
 
-  const yahooRes = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+  // A network blip or timeout on one symbol shouldn't take down a whole batch
+  // add/remove request — treat it the same as "couldn't confirm this ticker".
+  let yahooRes: Response;
+  try {
+    yahooRes = await yahooLimiter.run(() =>
+      fetch(url, {
+        headers: { "User-Agent": "Mozilla/5.0" },
+        signal: AbortSignal.timeout(YAHOO_FETCH_TIMEOUT_MS),
+      })
+    );
+  } catch {
+    return { valid: false, symbol: upperSymbol };
+  }
   if (!yahooRes.ok) {
     return { valid: false, symbol: upperSymbol };
   }
