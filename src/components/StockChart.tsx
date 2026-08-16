@@ -45,7 +45,7 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
     }
 
     return data.map((point, i) => {
-      const row: Record<string, any> = {
+      const row: Record<string, string | number | null> = {
         date: point.date,
         close: point.close,
       };

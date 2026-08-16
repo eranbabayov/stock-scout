@@ -44,3 +44,40 @@ Send `logout` any time to unlink that chat.
 ## Turning it off
 
 Stop `npm run dev` (Ctrl+C) — this also stops the Telegram bot. `docker compose down` if you want Postgres to stop too — your data stays in the Docker volume either way.
+
+## Deploying
+
+The app ships as a single Docker image: one Node process serves the built frontend, the REST API, and the Telegram bot together, alongside a Postgres container. This is a single-node setup — see "Scaling notes" below for what that does and doesn't cover.
+
+### Run it anywhere Docker runs
+
+```
+cp .env.prod.example .env.prod    # fill in real secrets — this file is gitignored, never commit it
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+```
+
+That builds the image locally from the `Dockerfile` and starts both containers. On startup the app container automatically runs any pending database migrations (`docker-entrypoint.sh`) before starting the server. Visit `http://localhost:4000` (or whatever `APP_PORT` you set).
+
+For a real deployment, put a TLS-terminating reverse proxy (Caddy, nginx, Traefik) in front of port `4000` — auth cookies are marked `secure` in production and won't be sent over plain HTTP. Set `CLIENT_ORIGIN` in `.env.prod` to your public HTTPS URL.
+
+`docker compose -f docker-compose.prod.yml down` stops both containers; your data stays in the `stock_scout_pgdata` Docker volume. Add `-v` to also delete it.
+
+### CI/CD
+
+- **`.github/workflows/ci.yml`** — on every push/PR to `main`: typecheck (frontend, server, and vite config), lint, run the test suite, and build the frontend. This is the merge gate.
+- **`.github/workflows/docker-publish.yml`** — after CI passes on `main` (or on a `v*` tag, or manually via workflow_dispatch), builds the same `Dockerfile` and pushes it to GitHub Container Registry at `ghcr.io/<owner>/<repo>` (no extra secrets needed — it uses the built-in `GITHUB_TOKEN`). Tagged `latest` on `main`, plus a short-SHA tag and, for releases, the version tag.
+
+To run the published image instead of building locally, set in `.env.prod`:
+```
+APP_IMAGE=ghcr.io/<your-github-username>/stock-scout:latest
+```
+then:
+```
+docker compose --env-file .env.prod -f docker-compose.prod.yml pull app
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+```
+(GHCR packages are private by default — either make the package public in its GitHub settings, or `docker login ghcr.io` with a token that has `read:packages` before pulling.)
+
+### Scaling notes
+
+This is hardened for realistic multi-user concurrent load on **one machine** — connection pooling, a bounded Yahoo Finance request limiter with in-flight de-duplication, bounded Telegram message concurrency, and auth rate limiting are all in place (see git history for the "scale-readiness pass" if you want the details). It is **not** a horizontally-scaled architecture: there's one Postgres instance and one app process. If you outgrow a single machine, the natural next steps are a managed Postgres instance and running multiple app replicas behind a load balancer — not needed until you're well past personal/small-team scale.

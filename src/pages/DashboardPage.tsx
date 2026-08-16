@@ -28,8 +28,8 @@ const DashboardPage: React.FC = () => {
       await removeStock.mutateAsync(symbol);
       toast.success(`${symbol} removed from watchlist`);
       if (selectedSymbol === symbol) setSelectedSymbol(null);
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
     }
   };
 

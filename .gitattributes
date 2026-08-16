@@ -1,0 +1,7 @@
+# Docker reads these directly inside Linux containers — a CRLF shebang line
+# (e.g. from Windows checkout with core.autocrlf=true) breaks `docker build`
+# with "no such file or directory" on the interpreter. Force LF regardless of
+# platform.
+*.sh text eol=lf
+Dockerfile text eol=lf
+docker-entrypoint.sh text eol=lf

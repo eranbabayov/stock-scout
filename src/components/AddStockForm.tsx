@@ -29,11 +29,12 @@ const AddStockForm: React.FC = () => {
       await addStock.mutateAsync(s);
       toast.success(`${s} added to your watchlist`);
       setSymbol("");
-    } catch (err: any) {
-      if (err.message?.includes("duplicate")) {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes("duplicate")) {
         toast.error(`${s} is already in your watchlist`);
       } else {
-        toast.error(err.message);
+        toast.error(message);
       }
     }
   };

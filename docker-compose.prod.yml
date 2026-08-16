@@ -1,0 +1,58 @@
+# Full production stack: the app (frontend + API + Telegram bot in one
+# container) and its Postgres database. Copy .env.prod.example to .env.prod,
+# fill it in, then:
+#
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+#
+# ...or, to run the image published by CI instead of building locally, set
+# APP_IMAGE in .env.prod to the ghcr.io tag and run:
+#
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml pull app
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+
+# Explicit project name so this never collides with the dev docker-compose.yml
+# stack (which has its own "postgres" service) when both are run from the
+# same directory — without this, Compose derives the project name from the
+# directory and the two files' same-named services fight over one container.
+name: stock-scout-prod
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: stock-scout-postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - stock_scout_pgdata_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${APP_IMAGE:-stock-scout:local}
+    container_name: stock-scout-app-prod
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env.prod
+    environment:
+      NODE_ENV: production
+      # Internal service-to-service connection — always "postgres" (the
+      # compose service name), regardless of what host/port .env.prod's
+      # DATABASE_URL (if any) points at for local tooling.
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    ports:
+      - "${APP_PORT:-4000}:4000"
+
+volumes:
+  stock_scout_pgdata_prod:

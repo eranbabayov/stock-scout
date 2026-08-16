@@ -157,8 +157,8 @@ const TradesPanel: React.FC = () => {
         setForm(emptyForm);
         setEditingId(null);
         setShowForm(false);
-      } catch (err: any) {
-        toast.error(err.message);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : String(err));
       }
       return;
     }
@@ -189,8 +189,8 @@ const TradesPanel: React.FC = () => {
       toast.success("Trade added");
       setForm(emptyForm);
       setShowForm(false);
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -219,8 +219,8 @@ const TradesPanel: React.FC = () => {
     try {
       await deleteTrade.mutateAsync(id);
       toast.success("Trade removed");
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
     }
   };
 
