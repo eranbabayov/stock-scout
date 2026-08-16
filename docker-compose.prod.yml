@@ -1,13 +1,13 @@
-# Full production stack: the app (frontend + API + Telegram bot in one
-# container) and its Postgres database. Copy .env.prod.example to .env.prod,
-# fill it in, then:
+# Full production stack: nginx (static frontend + reverse proxy), the
+# backend (API + Telegram bot), and Postgres. Copy .env.prod.example to
+# .env.prod, fill it in, then:
 #
 #   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 #
-# ...or, to run the image published by CI instead of building locally, set
-# APP_IMAGE in .env.prod to the ghcr.io tag and run:
+# ...or, to run the images published by CI instead of building locally, set
+# BACKEND_IMAGE and FRONTEND_IMAGE in .env.prod to their ghcr.io tags and run:
 #
-#   docker compose --env-file .env.prod -f docker-compose.prod.yml pull app
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml pull backend frontend
 #   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 
 # Explicit project name so this never collides with the dev docker-compose.yml
@@ -33,12 +33,13 @@ services:
       timeout: 5s
       retries: 5
 
-  app:
+  backend:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ${APP_IMAGE:-stock-scout:local}
-    container_name: stock-scout-app-prod
+      target: backend
+    image: ${BACKEND_IMAGE:-stock-scout-backend:local}
+    container_name: stock-scout-backend-prod
     restart: unless-stopped
     depends_on:
       postgres:
@@ -51,8 +52,23 @@ services:
       # compose service name), regardless of what host/port .env.prod's
       # DATABASE_URL (if any) points at for local tooling.
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    # Not published to the host — only nginx (below) is publicly reachable.
+    # nginx.conf proxies /api/ to this service by its Compose DNS name.
+    expose:
+      - "4000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend
+    image: ${FRONTEND_IMAGE:-stock-scout-frontend:local}
+    container_name: stock-scout-frontend-prod
+    restart: unless-stopped
+    depends_on:
+      - backend
     ports:
-      - "${APP_PORT:-4000}:4000"
+      - "${APP_PORT:-8080}:80"
 
 volumes:
   stock_scout_pgdata_prod:

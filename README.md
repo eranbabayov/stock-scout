@@ -47,7 +47,7 @@ Stop `npm run dev` (Ctrl+C) — this also stops the Telegram bot. `docker compos
 
 ## Deploying
 
-The app ships as a single Docker image: one Node process serves the built frontend, the REST API, and the Telegram bot together, alongside a Postgres container. This is a single-node setup — see "Scaling notes" below for what that does and doesn't cover.
+The app ships as three containers: **nginx** (serves the built frontend and reverse-proxies `/api` to the backend), the **backend** (Express API + Telegram bot), and **Postgres**. Both app images build from the one `Dockerfile` (`--target backend` / `--target frontend`) so there's no duplicated build logic. This is a single-node setup — see "Scaling notes" below for what that does and doesn't cover.
 
 ### Run it anywhere Docker runs
 
@@ -56,27 +56,28 @@ cp .env.prod.example .env.prod    # fill in real secrets — this file is gitign
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 ```
 
-That builds the image locally from the `Dockerfile` and starts both containers. On startup the app container automatically runs any pending database migrations (`docker-entrypoint.sh`) before starting the server. Visit `http://localhost:4000` (or whatever `APP_PORT` you set).
+That builds both images locally from the `Dockerfile` and starts all three containers. On startup the backend automatically runs any pending database migrations (`docker-entrypoint.sh`) before starting the server. Visit `http://localhost:8080` (or whatever `APP_PORT` you set) — only nginx is published to the host; the backend is reachable solely over the internal Compose network.
 
-For a real deployment, put a TLS-terminating reverse proxy (Caddy, nginx, Traefik) in front of port `4000` — auth cookies are marked `secure` in production and won't be sent over plain HTTP. Set `CLIENT_ORIGIN` in `.env.prod` to your public HTTPS URL.
+For a real deployment, put a TLS-terminating reverse proxy (Caddy, nginx, Traefik) in front of the frontend container's port — auth cookies are marked `secure` in production and won't be sent over plain HTTP. Set `CLIENT_ORIGIN` in `.env.prod` to your public HTTPS URL.
 
-`docker compose -f docker-compose.prod.yml down` stops both containers; your data stays in the `stock_scout_pgdata` Docker volume. Add `-v` to also delete it.
+`docker compose -f docker-compose.prod.yml down` stops all three containers; your data stays in the `stock_scout_pgdata_prod` Docker volume. Add `-v` to also delete it.
 
 ### CI/CD
 
 - **`.github/workflows/ci.yml`** — on every push/PR to `main`: typecheck (frontend, server, and vite config), lint, run the test suite, and build the frontend. This is the merge gate.
-- **`.github/workflows/docker-publish.yml`** — after CI passes on `main` (or on a `v*` tag, or manually via workflow_dispatch), builds the same `Dockerfile` and pushes it to GitHub Container Registry at `ghcr.io/<owner>/<repo>` (no extra secrets needed — it uses the built-in `GITHUB_TOKEN`). Tagged `latest` on `main`, plus a short-SHA tag and, for releases, the version tag.
+- **`.github/workflows/docker-publish.yml`** — after CI passes on `main` (or on a `v*` tag, or manually via workflow_dispatch), builds both `Dockerfile` targets and pushes them to GitHub Container Registry at `ghcr.io/<owner>/<repo>-backend` and `ghcr.io/<owner>/<repo>-frontend` (no extra secrets needed — it uses the built-in `GITHUB_TOKEN`). Each is tagged `latest` on `main`, plus a short-SHA tag and, for releases, the version tag.
 
-To run the published image instead of building locally, set in `.env.prod`:
+To run the published images instead of building locally, set in `.env.prod`:
 ```
-APP_IMAGE=ghcr.io/<your-github-username>/stock-scout:latest
+BACKEND_IMAGE=ghcr.io/<your-github-username>/stock-scout-backend:latest
+FRONTEND_IMAGE=ghcr.io/<your-github-username>/stock-scout-frontend:latest
 ```
 then:
 ```
-docker compose --env-file .env.prod -f docker-compose.prod.yml pull app
+docker compose --env-file .env.prod -f docker-compose.prod.yml pull backend frontend
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 ```
-(GHCR packages are private by default — either make the package public in its GitHub settings, or `docker login ghcr.io` with a token that has `read:packages` before pulling.)
+(GHCR packages are private by default — either make each package public in its GitHub settings, or `docker login ghcr.io` with a token that has `read:packages` before pulling.)
 
 ### Scaling notes
 

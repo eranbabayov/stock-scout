@@ -1,6 +1,11 @@
 # syntax=docker/dockerfile:1
+#
+# Produces two separate images from one file, selected via `--target`:
+#   backend  - Express API + Telegram bot (docker-compose target: backend)
+#   frontend - nginx serving the built static client, proxying /api to the
+#              backend service (docker-compose target: frontend)
 
-# --- deps: install once, reused by both the build and runtime stages -------
+# --- deps: install once, reused by both the build and backend stages -------
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -12,8 +17,8 @@ WORKDIR /app
 COPY . .
 RUN npm run build
 
-# --- runtime: only what's needed to run the server + serve the built client -
-FROM node:20-alpine AS runtime
+# --- backend: API + Telegram bot, no frontend assets ------------------------
+FROM node:20-alpine AS backend
 WORKDIR /app
 ENV NODE_ENV=production
 
@@ -25,7 +30,6 @@ COPY package.json ./
 COPY tsconfig.json ./
 COPY server ./server
 COPY shared ./shared
-COPY --from=build /app/dist ./dist
 COPY docker-entrypoint.sh ./
 
 RUN chmod +x docker-entrypoint.sh && \
@@ -39,3 +43,14 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["npm", "start"]
+
+# --- frontend: static build served by nginx, proxying /api to the backend --
+FROM nginx:1.27-alpine AS frontend
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+# 127.0.0.1, not localhost — this minimal image resolves "localhost" to ::1
+# first, and nginx only binds the IPv4 wildcard, so the IPv6 attempt refuses.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD wget -qO- http://127.0.0.1/ >/dev/null || exit 1
