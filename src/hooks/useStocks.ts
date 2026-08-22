@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/apiClient";
 import { useAuth } from "@/contexts/AuthContext";
 import { fetchStockData } from "@/lib/stockApi";
-import type { UserStock, UserTrade, StockAlert, WatchlistListWithSymbols } from "@/lib/types";
+import type { UserStock, UserTrade, StockAlert, WatchlistListWithSymbols, ChartDrawing, DrawingType } from "@/lib/types";
 
 export function useUserStocks() {
   const { user } = useAuth();
@@ -285,5 +285,81 @@ export function useDeleteAlert() {
       await apiFetch(`/alerts/${alertId}`, { method: "DELETE" });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["alerts"] }),
+  });
+}
+
+export function useChartDrawings(symbol: string) {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: ["chart-drawings", user?.id, symbol],
+    queryFn: async () => {
+      if (!user || !symbol) return [];
+      return apiFetch<ChartDrawing[]>(`/chart-drawings?symbol=${encodeURIComponent(symbol)}`);
+    },
+    enabled: !!user && !!symbol,
+  });
+}
+
+export interface CreateDrawingInput {
+  symbol: string;
+  type: DrawingType;
+  p1_date: string;
+  p1_price: number;
+  p2_date?: string | null;
+  p2_price?: number | null;
+}
+
+export function useCreateChartDrawing() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: CreateDrawingInput) => {
+      if (!user) throw new Error("Not authenticated");
+      return apiFetch<ChartDrawing>("/chart-drawings", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    onSuccess: (_data, variables) =>
+      qc.invalidateQueries({ queryKey: ["chart-drawings", user?.id, variables.symbol] }),
+  });
+}
+
+export interface UpdateDrawingInput {
+  id: string;
+  p1_date?: string;
+  p1_price?: number;
+  p2_date?: string | null;
+  p2_price?: number | null;
+}
+
+export function useUpdateChartDrawing(symbol: string) {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, ...updates }: UpdateDrawingInput) => {
+      if (!user) throw new Error("Not authenticated");
+      return apiFetch<ChartDrawing>(`/chart-drawings/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(updates),
+      });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["chart-drawings", user?.id, symbol] }),
+  });
+}
+
+export function useDeleteChartDrawing(symbol: string) {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (drawingId: string) => {
+      if (!user) throw new Error("Not authenticated");
+      await apiFetch(`/chart-drawings/${drawingId}`, { method: "DELETE" });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["chart-drawings", user?.id, symbol] }),
   });
 }

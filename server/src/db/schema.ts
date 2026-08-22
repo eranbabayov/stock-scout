@@ -5,12 +5,17 @@ export const alertKindEnum = pgEnum("alert_kind", ["price", "moving_average"]);
 export const alertDirectionEnum = pgEnum("alert_direction", ["above", "below"]);
 export const alertStatusEnum = pgEnum("alert_status", ["active", "triggered"]);
 export const movingAverageTypeEnum = pgEnum("moving_average_type", ["EMA", "SMA"]);
+export const drawingTypeEnum = pgEnum("drawing_type", ["trendline", "ray", "horizontal"]);
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   username: text("username").notNull().unique(),
+  // Paying-user flag — exempts the account from the watchlist size cap (see
+  // MAX_WATCHLIST_SIZE in watchlist.ts). Set manually for now; wire up to
+  // real billing once that exists.
+  isPremium: boolean("is_premium").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -127,6 +132,28 @@ export const stockAlerts = pgTable(
   (t) => [index("idx_stock_alerts_status_symbol").on(t.status, t.symbol)],
 );
 
+// A user-drawn trendline/ray/horizontal line on a symbol's chart. Anchored to
+// bars by their actual date (not a raw pixel/time value), so a magnet-snapped
+// drawing stays correctly pinned to that bar's close across re-renders.
+// p2Date/p2Price are unused for "horizontal" (only p1Price matters there).
+export const chartDrawings = pgTable(
+  "chart_drawings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    symbol: text("symbol").notNull(),
+    type: drawingTypeEnum("type").notNull(),
+    p1Date: date("p1_date").notNull(),
+    p1Price: doublePrecision("p1_price").notNull(),
+    p2Date: date("p2_date"),
+    p2Price: doublePrecision("p2_price"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("idx_chart_drawings_user_symbol").on(t.userId, t.symbol)],
+);
+
 export const telegramLinks = pgTable(
   "telegram_links",
   {
@@ -189,3 +216,4 @@ export type TelegramOtpCode = typeof telegramOtpCodes.$inferSelect;
 export type StockAlert = typeof stockAlerts.$inferSelect;
 export type WatchlistList = typeof watchlistLists.$inferSelect;
 export type WatchlistListItem = typeof watchlistListItems.$inferSelect;
+export type ChartDrawing = typeof chartDrawings.$inferSelect;

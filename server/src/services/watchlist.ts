@@ -1,6 +1,6 @@
 import { and, count, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
-import { userStocks, watchlistLists, watchlistListItems } from "../db/schema";
+import { users, userStocks, watchlistLists, watchlistListItems } from "../db/schema";
 import { validateStock } from "./yahooFinance";
 
 // Enforced in one place so both the REST API and the Telegram agent are
@@ -37,8 +37,11 @@ export async function addStockToWatchlist(userId: string, rawSymbol: string, lis
     const { valid } = await validateStock(symbol);
     if (!valid) return "invalid";
 
-    const [{ total }] = await db.select({ total: count() }).from(userStocks).where(eq(userStocks.userId, userId));
-    if (total >= MAX_WATCHLIST_SIZE) return "limit_reached";
+    const [user] = await db.select({ isPremium: users.isPremium }).from(users).where(eq(users.id, userId)).limit(1);
+    if (!user?.isPremium) {
+      const [{ total }] = await db.select({ total: count() }).from(userStocks).where(eq(userStocks.userId, userId));
+      if (total >= MAX_WATCHLIST_SIZE) return "limit_reached";
+    }
 
     try {
       await db.insert(userStocks).values({ userId, symbol });

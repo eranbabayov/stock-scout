@@ -57,6 +57,20 @@
       "when": 1786915419995,
       "tag": "0007_last_inertia",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786951152272,
+      "tag": "0008_solid_mattie_franklin",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1786981506896,
+      "tag": "0009_previous_speedball",
+      "breakpoints": true
     }
   ]
 }

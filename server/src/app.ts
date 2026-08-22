@@ -9,6 +9,7 @@ import { tradesRouter } from "./routes/trades.routes";
 import { stockDataRouter } from "./routes/stock-data.routes";
 import { alertsRouter } from "./routes/alerts.routes";
 import { watchlistListsRouter } from "./routes/watchlist-lists.routes";
+import { chartDrawingsRouter } from "./routes/chart-drawings.routes";
 import { errorHandler } from "./middleware/errorHandler";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -40,6 +41,7 @@ export function createApp() {
   app.use("/api/stock-data", stockDataRouter);
   app.use("/api/alerts", alertsRouter);
   app.use("/api/watchlist-lists", watchlistListsRouter);
+  app.use("/api/chart-drawings", chartDrawingsRouter);
 
   // In dev the frontend is served separately by the Vite dev server (which
   // proxies /api here) — this only serves anything in production, where the
