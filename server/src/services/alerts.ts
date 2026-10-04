@@ -81,6 +81,38 @@ export async function listAlerts(userId: string): Promise<StockAlert[]> {
   return db.select().from(stockAlerts).where(eq(stockAlerts.userId, userId)).orderBy(desc(stockAlerts.createdAt));
 }
 
+export type UpdateAlertResult =
+  | { ok: true; alert: StockAlert }
+  | { ok: false; reason: "not_found" | "not_a_price_alert" | "no_price_data" };
+
+// Retargeting a price alert recomputes `direction` exactly like creation
+// does — carrying over the old direction would leave it stale relative to
+// the new target, firing immediately or never. Retargeting a fired alert
+// also un-fires it: dragging a triggered alert's line to a new price means
+// "I want a new alert here," not an edit to history.
+export async function updateAlertTargetPrice(userId: string, alertId: string, targetPrice: number): Promise<UpdateAlertResult> {
+  const [alert] = await db
+    .select()
+    .from(stockAlerts)
+    .where(and(eq(stockAlerts.id, alertId), eq(stockAlerts.userId, userId)))
+    .limit(1);
+  if (!alert) return { ok: false, reason: "not_found" };
+  if (alert.kind !== "price") return { ok: false, reason: "not_a_price_alert" };
+
+  const currentPrice = await getCurrentPrice(alert.symbol);
+  if (currentPrice == null) return { ok: false, reason: "no_price_data" };
+
+  const direction = currentPrice < targetPrice ? "above" : "below";
+
+  const [updated] = await db
+    .update(stockAlerts)
+    .set({ targetPrice, direction, status: "active", triggeredAt: null })
+    .where(eq(stockAlerts.id, alertId))
+    .returning();
+
+  return { ok: true, alert: updated };
+}
+
 export async function deleteAlert(userId: string, alertId: string): Promise<boolean> {
   const deleted = await db
     .delete(stockAlerts)

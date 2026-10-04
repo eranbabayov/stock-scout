@@ -275,6 +275,22 @@ export function useCreateMovingAverageAlert() {
   });
 }
 
+export function useUpdateAlert() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, target_price }: { id: string; target_price: number }) => {
+      if (!user) throw new Error("Not authenticated");
+      return apiFetch<StockAlert>(`/alerts/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ target_price }),
+      });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["alerts"] }),
+  });
+}
+
 export function useDeleteAlert() {
   const { user } = useAuth();
   const qc = useQueryClient();

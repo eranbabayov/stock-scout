@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
 import { HttpError } from "../middleware/errorHandler";
-import { createPriceAlert, createMovingAverageAlert, listAlerts, deleteAlert } from "../services/alerts";
+import { createPriceAlert, createMovingAverageAlert, listAlerts, deleteAlert, updateAlertTargetPrice } from "../services/alerts";
 
 export const alertsRouter = Router();
 
@@ -50,6 +50,27 @@ alertsRouter.post("/", async (req, res) => {
   }
 
   throw new HttpError(400, "kind must be 'price' or 'moving_average'");
+});
+
+alertsRouter.patch("/:id", async (req, res) => {
+  const { target_price } = req.body ?? {};
+  if (target_price == null || Number(target_price) <= 0) {
+    throw new HttpError(400, "target_price is required and must be greater than 0");
+  }
+
+  const result = await updateAlertTargetPrice(req.user!.id, req.params.id, Number(target_price));
+  if (result.ok) {
+    res.json(result.alert);
+    return;
+  }
+
+  const messages: Record<string, string> = {
+    not_found: "Alert not found",
+    not_a_price_alert: "Only price-target alerts can be retargeted this way",
+    no_price_data: "Couldn't fetch current price data for that symbol right now",
+  };
+  const status = result.reason === "not_found" ? 404 : 400;
+  res.status(status).json({ error: messages[result.reason] });
 });
 
 alertsRouter.delete("/:id", async (req, res) => {

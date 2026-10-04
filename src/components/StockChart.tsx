@@ -16,8 +16,10 @@ import {
   useDeleteChartDrawing,
   useAlerts,
   useCreatePriceAlert,
+  useUpdateAlert,
+  useDeleteAlert,
 } from "@/hooks/useStocks";
-import type { DrawingType, ChartDrawing } from "@/lib/types";
+import type { DrawingType, ChartDrawing, StockAlert } from "@/lib/types";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { MousePointer2, Slash, MoveUpRight, Minus, Magnet, Trash2 } from "lucide-react";
@@ -119,6 +121,19 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
   const [dragCurrent, setDragCurrent] = useState<PointSet | null>(null);
   const [dragMoved, setDragMoved] = useState(false);
 
+  // --- Dragging an alert marker to retarget it, same shape as above but
+  // against the alerts API instead of chart-drawings, and price-only
+  // (alerts aren't anchored to a bar/date). ---
+  interface AlertDragState {
+    alertId: string;
+    startClientY: number;
+    originalPrice: number;
+  }
+  const [alertDragState, setAlertDragState] = useState<AlertDragState | null>(null);
+  const [alertDragCurrent, setAlertDragCurrent] = useState<number | null>(null);
+  const [alertDragMoved, setAlertDragMoved] = useState(false);
+  const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
+
   // getComputedStyle forces a style recalculation — cheap once per theme
   // toggle, wasteful if re-read on every pan/zoom/resize frame. Resolved
   // once here (useMemo, not an effect — an effect would run one commit
@@ -160,6 +175,8 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
 
   const { data: allAlerts } = useAlerts();
   const createPriceAlert = useCreatePriceAlert();
+  const updateAlert = useUpdateAlert();
+  const deleteAlertMutation = useDeleteAlert();
   // Only price-target alerts get a chart marker — a moving-average alert's
   // target is itself a moving line, not a fixed price, and already renders
   // as its own MA overlay when that indicator is selected above.
@@ -658,6 +675,7 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
         p2Date: drawing.p2Date,
         p2Price: drawing.p2Price,
       };
+      setSelectedAlertId(null);
       setSelectedDrawingId(drawing.id);
       setDragMoved(false);
       setDragState({
@@ -674,8 +692,31 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
     [toPixel]
   );
 
+  const startAlertDrag = useCallback(
+    (alert: StockAlert, e: React.PointerEvent) => {
+      e.stopPropagation();
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+      setSelectedDrawingId(null);
+      setSelectedAlertId(alert.id);
+      setAlertDragMoved(false);
+      setAlertDragState({ alertId: alert.id, startClientY: e.clientY, originalPrice: alert.targetPrice ?? 0 });
+      setAlertDragCurrent(alert.targetPrice ?? null);
+    },
+    []
+  );
+
   const handleOverlayPointerMove = useCallback(
     (e: React.PointerEvent<SVGSVGElement>) => {
+      if (alertDragState) {
+        const dy = e.clientY - alertDragState.startClientY;
+        if (Math.abs(dy) > MOVE_THRESHOLD_PX) setAlertDragMoved(true);
+        const originalY = priceToY(alertDragState.originalPrice);
+        if (originalY == null) return;
+        const newPrice = Math.max(0.01, Math.round(yToPrice(originalY + dy) * 100) / 100);
+        setAlertDragCurrent(newPrice);
+        return;
+      }
+
       if (dragState) {
         const dx = e.clientX - dragState.startClientX;
         const dy = e.clientY - dragState.startClientY;
@@ -710,10 +751,23 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
         if (point) setPreviewPoint(point);
       }
     },
-    [dragState, resolveFromPixel, resolvePointFromClientXY, activeTool, pendingPoint]
+    [alertDragState, priceToY, yToPrice, dragState, resolveFromPixel, resolvePointFromClientXY, activeTool, pendingPoint]
   );
 
   const handleOverlayPointerUp = useCallback(() => {
+    if (alertDragState) {
+      if (alertDragMoved && alertDragCurrent != null) {
+        updateAlert.mutate(
+          { id: alertDragState.alertId, target_price: alertDragCurrent },
+          { onError: (err) => toast.error(err instanceof Error ? err.message : String(err)) }
+        );
+      }
+      setAlertDragState(null);
+      setAlertDragCurrent(null);
+      setAlertDragMoved(false);
+      return;
+    }
+
     if (!dragState) return;
     if (dragMoved && dragCurrent) {
       updateDrawing.mutate(
@@ -730,9 +784,18 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
     setDragState(null);
     setDragCurrent(null);
     setDragMoved(false);
-  }, [dragState, dragMoved, dragCurrent, updateDrawing]);
+  }, [alertDragState, alertDragMoved, alertDragCurrent, updateAlert, dragState, dragMoved, dragCurrent, updateDrawing]);
 
   const handleDeleteSelected = useCallback(async () => {
+    if (selectedAlertId) {
+      try {
+        await deleteAlertMutation.mutateAsync(selectedAlertId);
+        setSelectedAlertId(null);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : String(err));
+      }
+      return;
+    }
     if (!selectedDrawingId) return;
     try {
       await deleteDrawing.mutateAsync(selectedDrawingId);
@@ -740,7 +803,7 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
-  }, [selectedDrawingId, deleteDrawing]);
+  }, [selectedAlertId, deleteAlertMutation, selectedDrawingId, deleteDrawing]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -749,13 +812,14 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
         setPendingPoint(null);
         setPreviewPoint(null);
         setSelectedDrawingId(null);
-      } else if ((e.key === "Delete" || e.key === "Backspace") && selectedDrawingId && !dragState) {
+        setSelectedAlertId(null);
+      } else if ((e.key === "Delete" || e.key === "Backspace") && (selectedDrawingId || selectedAlertId) && !dragState && !alertDragState) {
         handleDeleteSelected();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selectedDrawingId, handleDeleteSelected, dragState]);
+  }, [selectedDrawingId, selectedAlertId, handleDeleteSelected, dragState, alertDragState]);
 
   interface RenderLine {
     id: string;
@@ -835,11 +899,14 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
     color: string;
     bgColor: string;
     dashed: boolean;
+    // null for the current-price marker, which stays read-only.
+    alert: StockAlert | null;
   }
 
-  // Read-only annotations — current price, and each price-target alert on
-  // this symbol. Not draggable/selectable, unlike user drawings above, but
-  // repositions on pan/zoom/resize through the same redrawTick-driven recompute.
+  // Current price is read-only; each price-target alert is click-to-select,
+  // drag-to-retarget, delete — same interaction model as user drawings, just
+  // against the alerts API instead of chart-drawings. Repositions on
+  // pan/zoom/resize through the same redrawTick-driven recompute.
   const priceMarkers = useMemo((): PriceMarker[] => {
     const markers: PriceMarker[] = [];
 
@@ -862,29 +929,35 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
           color: colors.primary,
           bgColor: colors.background,
           dashed: false,
+          alert: null,
         });
       }
     }
 
     for (const alert of symbolAlerts) {
       if (alert.targetPrice == null) continue;
-      const y = priceToY(alert.targetPrice);
+      // While this alert is being dragged, show the live dragged price
+      // instead of its stored one — alertDragCurrent is only set for the
+      // alert actually being dragged.
+      const displayPrice = alertDragState?.alertId === alert.id && alertDragCurrent != null ? alertDragCurrent : alert.targetPrice;
+      const y = priceToY(displayPrice);
       if (y == null) continue;
       const fired = alert.status === "triggered";
       markers.push({
         id: `alert-${alert.id}`,
         y,
-        label: `${alert.targetPrice.toFixed(2)} ALERT`,
+        label: `${displayPrice.toFixed(2)} ALERT`,
         color: fired ? colors.alertFired : colors.alertPending,
         bgColor: fired ? colors.alertFiredBg : colors.alertPendingBg,
         dashed: !fired,
+        alert,
       });
     }
 
     return markers;
     // redrawTick intentionally triggers a recompute even though it's not read directly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentQuote, symbolAlerts, priceToY, redrawTick, themeColors]);
+  }, [currentQuote, symbolAlerts, priceToY, redrawTick, themeColors, alertDragState, alertDragCurrent]);
 
   return (
     <div className="bg-card border border-border rounded-xl p-4">
@@ -959,7 +1032,7 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
         >
           <Magnet className="h-4 w-4" />
         </Button>
-        {selectedDrawingId && (
+        {(selectedDrawingId || selectedAlertId) && (
           <Button
             variant="ghost"
             size="icon"
@@ -1007,6 +1080,7 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
                   onPointerDown={(e) => startDrag(line.drawing!, "line", e)}
                   onClick={(e) => {
                     e.stopPropagation();
+                    setSelectedAlertId(null);
                     setSelectedDrawingId(line.id);
                   }}
                 />
@@ -1040,16 +1114,35 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
           {priceMarkers.map((marker) => {
             const width = getPlotWidth();
             const tagWidth = marker.label.length * 6.5 + 12;
+            const selected = marker.alert != null && selectedAlertId === marker.alert.id;
             return (
-              <g key={marker.id} style={{ pointerEvents: "none" }}>
+              <g key={marker.id}>
+                {marker.alert && activeTool === "cursor" && (
+                  <line
+                    x1={0}
+                    y1={marker.y}
+                    x2={width}
+                    y2={marker.y}
+                    stroke="transparent"
+                    strokeWidth={10}
+                    style={{ pointerEvents: "auto", cursor: "move" }}
+                    onPointerDown={(e) => startAlertDrag(marker.alert!, e)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedDrawingId(null);
+                      setSelectedAlertId(marker.alert!.id);
+                    }}
+                  />
+                )}
                 <line
                   x1={0}
                   y1={marker.y}
                   x2={width}
                   y2={marker.y}
                   stroke={marker.color}
-                  strokeWidth={1.5}
+                  strokeWidth={selected ? 2.5 : 1.5}
                   strokeDasharray={marker.dashed ? "4 4" : undefined}
+                  style={{ pointerEvents: "none" }}
                 />
                 <rect
                   x={width - tagWidth - 2}
@@ -1059,7 +1152,8 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
                   rx={3}
                   fill={marker.bgColor}
                   stroke={marker.color}
-                  strokeWidth={1}
+                  strokeWidth={selected ? 2 : 1}
+                  style={{ pointerEvents: "none" }}
                 />
                 <text
                   x={width - tagWidth / 2 - 2}
@@ -1069,13 +1163,14 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
                   fontFamily="monospace"
                   fontWeight={600}
                   fill={marker.color}
+                  style={{ pointerEvents: "none" }}
                 >
                   {marker.label}
                 </text>
               </g>
             );
           })}
-          {activeTool === "cursor" && hoverY != null && !panRef.current && !dragState && (() => {
+          {activeTool === "cursor" && hoverY != null && !panRef.current && !dragState && !alertDragState && (() => {
             const plotWidth = getPlotWidth();
             const hoverPrice = yToPrice(hoverY);
             const buttonX = plotWidth + PRICE_AXIS_GUTTER / 2;
