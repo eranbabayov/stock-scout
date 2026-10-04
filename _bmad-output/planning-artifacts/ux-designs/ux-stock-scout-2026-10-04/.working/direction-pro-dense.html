@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Direction: Pro Dense</title>
+<style>
+/*
+  DIRECTION: Pro Dense (dark trading-terminal register)
+  Hex values used:
+  --bg-page:      #06080C
+  --bg-panel:     #10141B
+  --bg-chart:     #0D1117
+  --border:       #232833
+  --grid:         #1C2128
+  --text-primary: #D7DCE3
+  --text-muted:   #6E7684
+  --text-dim:     #4B5563
+  --candle-up:    #26A69A
+  --candle-down:  #EF5350
+  --alert-amber:  #FFB800
+  --alert-amber-dim: #4A3B0E
+  --current-cyan: #3DDC97
+  --fired-bg:     #0F2A1E
+  --fired-border: #1F6B49
+  --fired-text:   #3DDC97
+  --pending-bg:   #15181D
+  --pending-text: #6E7684
+*/
+* { box-sizing:border-box; margin:0; padding:0; }
+body {
+  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #06080C;
+  color: #D7DCE3;
+  padding: 40px;
+}
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.rationale {
+  max-width: 980px;
+  margin: 0 auto 36px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #9CA6B2;
+  background: #10141B;
+  border: 1px solid #232833;
+  border-radius: 6px;
+  padding: 18px 22px;
+}
+.rationale b { color: #3DDC97; }
+.frames { display:flex; gap:48px; align-items:flex-start; flex-wrap:wrap; justify-content:center; }
+
+.ticker-row { display:flex; gap:6px; font-size:9px; padding:4px 6px; background:#0A0D12; border-bottom:1px solid #1C2128; color:#4B5563; overflow:hidden; white-space:nowrap; }
+.chart-wrap { position:relative; height:200px; background:#0D1117; border:1px solid #1C2128; padding:10px 6px 6px; }
+.grid-h { position:absolute; left:0; right:0; border-top:1px solid #1C2128; }
+.candles { position:relative; height:160px; display:flex; align-items:stretch; gap:2px; margin-top:4px; }
+.candle { position:relative; flex:1; }
+.candle .wick { position:absolute; left:50%; width:1px; background:#2E7D74; transform:translateX(-50%); }
+.candle .body { position:absolute; left:50%; width:70%; transform:translateX(-50%); }
+.candle.up .wick, .candle.up .body { background:#26A69A; }
+.candle.down .wick, .candle.down .body { background:#EF5350; }
+.candle .body { top:var(--bt); height:6%; }
+.candle .wick { top:calc(var(--bt) - 3%); height:12%; }
+
+.alert-line { position:absolute; left:0; right:0; border-top:1.5px dashed #FFB800; }
+.alert-tag { position:absolute; right:0; transform:translateY(-100%); background:#4A3B0E; color:#FFB800; font-size:9px; font-weight:700; padding:1px 5px; letter-spacing:0.3px; }
+.current-line { position:absolute; left:0; right:0; border-top:1.5px solid #3DDC97; }
+.current-tag { position:absolute; right:0; transform:translateY(-100%); background:#3DDC97; color:#06080C; font-size:9px; font-weight:700; padding:1px 5px; }
+
+.stat-grid { display:grid; grid-template-columns: repeat(4, 1fr); gap:1px; background:#1C2128; border:1px solid #1C2128; font-size:10px; }
+.stat-cell { background:#10141B; padding:6px 8px; }
+.stat-cell .k { color:#4B5563; font-size:9px; text-transform:uppercase; }
+.stat-cell .v { color:#D7DCE3; font-weight:600; margin-top:2px; }
+
+.alert-row { display:flex; align-items:center; justify-content:space-between; padding:7px 10px; border-bottom:1px solid #1C2128; font-size:11px; }
+.alert-row.fired { background:#0F2A1E; }
+.alert-row.pending { background:#15181D; color:#6E7684; }
+.tag-fired { color:#3DDC97; font-size:9px; font-weight:700; border:1px solid #1F6B49; padding:1px 6px; }
+.tag-pending { color:#6E7684; font-size:9px; font-weight:700; border:1px solid #2A2E36; padding:1px 6px; }
+</style>
+</head>
+<body>
+
+<div class="rationale">
+  <b>Pro Dense</b> — terminal-dark surfaces, teal/red candle convention, monospace numerics, and a packed stat strip for traders who want everything on one screen with zero scrolling. The amber alert line vs. the green live-price line reads instantly even at a glance between other tickers, and the dense alert ledger below makes fired-vs-pending a scannable list, not a mystery.
+</div>
+
+<div class="frames">
+
+<!-- PHONE -->
+<div style="width:375px; background:#000; border-radius:40px; padding:12px; box-shadow:0 20px 50px rgba(0,0,0,0.5);">
+  <div style="background:#06080C; border-radius:30px; overflow:hidden; min-height:720px;">
+    <div class="ticker-row">
+      <span>SPY 568.21▲</span><span>QQQ 481.09▲</span><span style="color:#3DDC97">GOOGL 152.40▲</span><span>AAPL 174.20▼</span><span>MSFT 420.11▲</span>
+    </div>
+    <div style="padding:12px 14px 0;">
+      <div style="display:flex; align-items:baseline; gap:8px;">
+        <span class="mono" style="font-size:18px; font-weight:700;">GOOGL</span>
+        <span class="mono" style="font-size:22px; font-weight:700; color:#3DDC97;">152.40</span>
+        <span class="mono" style="font-size:11px; color:#3DDC97;">+1.60%</span>
+      </div>
+      <div style="font-size:10px; color:#4B5563; margin-top:2px;">ALPHABET INC · NASDAQ · 07:02:14</div>
+    </div>
+
+    <div class="chart-wrap" style="margin:10px 14px; height:190px;">
+      <div class="grid-h" style="top:25%;"></div>
+      <div class="grid-h" style="top:50%;"></div>
+      <div class="grid-h" style="top:75%;"></div>
+      <div class="alert-line" style="top:50%;"></div>
+      <div class="alert-tag" style="top:50%;">150.00 ALERT</div>
+      <div class="current-line" style="top:28%;"></div>
+      <div class="current-tag" style="top:28%;">152.40</div>
+      <div class="candles">
+        <div class="candle up" style="--bt:85%"></div>
+        <div class="candle up" style="--bt:80%"></div>
+        <div class="candle down" style="--bt:83%"></div>
+        <div class="candle up" style="--bt:76%"></div>
+        <div class="candle up" style="--bt:70%"></div>
+        <div class="candle down" style="--bt:72%"></div>
+        <div class="candle up" style="--bt:65%"></div>
+        <div class="candle up" style="--bt:59%"></div>
+        <div class="candle up" style="--bt:53%"></div>
+        <div class="candle up" style="--bt:45%"></div>
+        <div class="candle down" style="--bt:48%"></div>
+        <div class="candle up" style="--bt:40%"></div>
+        <div class="candle up" style="--bt:35%"></div>
+        <div class="candle up" style="--bt:28%"></div>
+      </div>
+    </div>
+
+    <div class="stat-grid" style="margin:0 14px;">
+      <div class="stat-cell"><div class="k">OPEN</div><div class="v mono">150.90</div></div>
+      <div class="stat-cell"><div class="k">HIGH</div><div class="v mono">152.60</div></div>
+      <div class="stat-cell"><div class="k">LOW</div><div class="v mono">150.00</div></div>
+      <div class="stat-cell"><div class="k">VOL</div><div class="v mono">18.2M</div></div>
+    </div>
+
+    <div style="padding:14px; font-size:10px; font-weight:700; color:#4B5563; letter-spacing:0.5px;">ALERT LEDGER</div>
+    <div class="alert-row fired">
+      <span>GOOGL &gt; 150.00</span>
+      <span class="tag-fired mono">FIRED 03:12</span>
+    </div>
+    <div class="alert-row pending">
+      <span>AAPL &gt; 180.00</span>
+      <span class="tag-pending mono">174.20</span>
+    </div>
+  </div>
+</div>
+
+<!-- LAPTOP -->
+<div style="width:1100px; background:#15181D; border-radius:10px; padding:8px 8px 16px; box-shadow:0 30px 60px rgba(0,0,0,0.5);">
+  <div style="display:flex; gap:6px; align-items:center; padding:4px 8px 10px;">
+    <div style="width:10px; height:10px; border-radius:50%; background:#EF5350;"></div>
+    <div style="width:10px; height:10px; border-radius:50%; background:#FFB800;"></div>
+    <div style="width:10px; height:10px; border-radius:50%; background:#26A69A;"></div>
+    <div style="flex:1; text-align:center; font-size:11px; color:#4B5563; background:#0D1117; border-radius:4px; padding:5px; margin:0 60px;" class="mono">stockscout.app/terminal/googl</div>
+  </div>
+  <div class="ticker-row" style="margin-bottom:0;">
+    <span>SPY 568.21▲</span><span>QQQ 481.09▲</span><span style="color:#3DDC97">GOOGL 152.40▲</span><span>AAPL 174.20▼</span><span>MSFT 420.11▲</span><span>NVDA 188.44▲</span><span>TSLA 256.70▼</span><span>AMZN 198.02▲</span>
+  </div>
+  <div style="background:#0D1117; display:flex; gap:0; min-height:480px;">
+    <div style="flex:1; padding:18px; border-right:1px solid #1C2128;">
+      <div style="display:flex; align-items:baseline; gap:10px;">
+        <span class="mono" style="font-size:22px; font-weight:700;">GOOGL</span>
+        <span class="mono" style="font-size:30px; font-weight:700; color:#3DDC97;">152.40</span>
+        <span class="mono" style="font-size:13px; color:#3DDC97;">+1.60% ▲2.40</span>
+      </div>
+      <div style="font-size:11px; color:#4B5563; margin-top:2px; margin-bottom:12px;">ALPHABET INC · NASDAQ:GOOGL · 07:02:14 EDT</div>
+      <div class="chart-wrap" style="height:340px;">
+        <div class="grid-h" style="top:25%;"></div>
+        <div class="grid-h" style="top:50%;"></div>
+        <div class="grid-h" style="top:75%;"></div>
+        <div class="alert-line" style="top:50%;"></div>
+        <div class="alert-tag" style="top:50%; font-size:10px; padding:2px 7px;">150.00 ALERT TARGET</div>
+        <div class="current-line" style="top:28%;"></div>
+        <div class="current-tag" style="top:28%; font-size:10px; padding:2px 7px;">152.40 LIVE</div>
+        <div class="candles" style="height:300px;">
+          <div class="candle up" style="--bt:85%"></div>
+          <div class="candle up" style="--bt:80%"></div>
+          <div class="candle down" style="--bt:83%"></div>
+          <div class="candle up" style="--bt:76%"></div>
+          <div class="candle up" style="--bt:70%"></div>
+          <div class="candle down" style="--bt:72%"></div>
+          <div class="candle up" style="--bt:65%"></div>
+          <div class="candle up" style="--bt:59%"></div>
+          <div class="candle up" style="--bt:53%"></div>
+          <div class="candle up" style="--bt:45%"></div>
+          <div class="candle down" style="--bt:48%"></div>
+          <div class="candle up" style="--bt:40%"></div>
+          <div class="candle up" style="--bt:35%"></div>
+          <div class="candle up" style="--bt:28%"></div>
+        </div>
+      </div>
+      <div class="stat-grid" style="margin-top:10px;">
+        <div class="stat-cell"><div class="k">OPEN</div><div class="v mono">150.90</div></div>
+        <div class="stat-cell"><div class="k">HIGH</div><div class="v mono">152.60</div></div>
+        <div class="stat-cell"><div class="k">LOW</div><div class="v mono">150.00</div></div>
+        <div class="stat-cell"><div class="k">VOL</div><div class="v mono">18.2M</div></div>
+      </div>
+    </div>
+    <div style="width:300px; padding:18px;">
+      <div style="font-size:11px; font-weight:700; color:#4B5563; letter-spacing:0.5px; margin-bottom:10px;">ALERT LEDGER — ALL SYMBOLS</div>
+      <div class="alert-row fired" style="border:1px solid #1F6B49; margin-bottom:6px;">
+        <span>GOOGL &gt; 150.00</span>
+        <span class="tag-fired mono">FIRED 03:12</span>
+      </div>
+      <div class="alert-row pending" style="border:1px solid #232833;">
+        <span>AAPL &gt; 180.00</span>
+        <span class="tag-pending mono">174.20</span>
+      </div>
+      <div style="margin-top:18px; font-size:11px; font-weight:700; color:#4B5563; letter-spacing:0.5px; margin-bottom:10px;">WATCHLIST</div>
+      <div style="font-size:11px; color:#6E7684;" class="mono">
+        MSFT&nbsp;&nbsp;420.11&nbsp;▲0.8%<br>
+        NVDA&nbsp;&nbsp;188.44&nbsp;▲1.2%<br>
+        TSLA&nbsp;&nbsp;256.70&nbsp;▼0.4%
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

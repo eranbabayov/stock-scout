@@ -33,3 +33,8 @@ server/.env
 # Bun lockfiles (project uses npm)
 bun.lock
 bun.lockb
+
+# BMAD per-invocation render cache — deterministic, content-hash-addressed,
+# regenerated fresh by render_skill.py every run. Never commit; only
+# _bmad/scripts, _bmad/config.toml, and _bmad/custom are real project state.
+_bmad/render/

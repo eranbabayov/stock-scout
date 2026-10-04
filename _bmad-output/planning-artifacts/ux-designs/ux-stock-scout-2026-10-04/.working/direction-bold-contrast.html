@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Direction: Bold Contrast</title>
+<style>
+/*
+  DIRECTION: Bold High-Contrast
+  Hex values used:
+  --bg-page:       #0A0A0A
+  --bg-black:      #000000
+  --bg-card:       #0F0F0F
+  --white:         #FFFFFF
+  --off-white:     #E8E8E8
+  --neon-green:    #C6FF3D
+  --neon-green-dk: #223300
+  --alert-yellow:  #FFE600
+  --alert-yellow-dk:#3A3300
+  --candle-up:     #FFFFFF
+  --candle-down:   #4A4A4A
+  --fired-stripe:  #C6FF3D
+  --pending-gray:  #2A2A2A
+  --pending-text:  #9A9A9A
+  --danger-red:    #FF3B3B (unused accent reserve)
+*/
+* { box-sizing:border-box; margin:0; padding:0; }
+body {
+  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #0A0A0A;
+  color: #FFFFFF;
+  padding: 40px;
+}
+.rationale {
+  max-width: 980px;
+  margin: 0 auto 36px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #E8E8E8;
+  background: #0F0F0F;
+  border: 2px solid #FFFFFF;
+  padding: 20px 24px;
+}
+.rationale b { color: #C6FF3D; }
+.frames { display:flex; gap:48px; align-items:flex-start; flex-wrap:wrap; justify-content:center; }
+
+.sym-huge { font-size:22px; font-weight:900; letter-spacing:-0.5px; text-transform:uppercase; }
+.price-huge { font-weight:900; letter-spacing:-1px; }
+
+.fired-banner { background:#C6FF3D; color:#000; font-weight:900; text-transform:uppercase; letter-spacing:0.5px; padding:8px 12px; display:flex; align-items:center; justify-content:space-between;
+  background-image: repeating-linear-gradient(135deg, #C6FF3D 0 14px, #B8F02E 14px 28px); }
+
+.chart-wrap { position:relative; height:200px; background:#000; border:2px solid #fff; padding:12px 8px 8px; }
+.candles { position:relative; height:160px; display:flex; align-items:stretch; gap:3px; margin-top:4px; }
+.candle { position:relative; flex:1; }
+.candle .wick { position:absolute; left:50%; width:2px; background:#5A5A5A; transform:translateX(-50%); }
+.candle .body { position:absolute; left:50%; width:70%; transform:translateX(-50%); }
+.candle.up .wick, .candle.up .body { background:#FFFFFF; }
+.candle.down .wick, .candle.down .body { background:#4A4A4A; }
+.candle .body { top:var(--bt); height:6%; }
+.candle .wick { top:calc(var(--bt) - 3%); height:12%; }
+
+.alert-line { position:absolute; left:0; right:0; border-top:3px dashed #FFE600; }
+.alert-tag { position:absolute; right:0; transform:translateY(-100%); background:#FFE600; color:#000; font-size:11px; font-weight:900; padding:2px 8px; }
+.current-line { position:absolute; left:0; right:0; border-top:3px solid #C6FF3D; }
+.current-tag { position:absolute; right:0; transform:translateY(-100%); background:#C6FF3D; color:#000; font-size:11px; font-weight:900; padding:2px 8px; }
+
+.alert-block { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; margin-bottom:10px; border:2px solid; }
+.alert-block.fired { border-color:#C6FF3D; background:#141A05; }
+.alert-block.pending { border-color:#2A2A2A; background:#0F0F0F; color:#9A9A9A; }
+.alert-block .lbl { font-weight:800; font-size:14px; text-transform:uppercase; }
+.pill { font-size:10px; font-weight:900; padding:4px 10px; text-transform:uppercase; }
+.pill.fired { background:#C6FF3D; color:#000; }
+.pill.pending { background:#2A2A2A; color:#9A9A9A; }
+</style>
+</head>
+<body>
+
+<div class="rationale">
+  <b>Bold Contrast</b> — true black, pure white, and a single shock of acid-neon green that only appears when an alert has actually fired, striped like warning tape. Nothing competes for attention: the yellow dashed target line and the neon "FIRED" banner are the loudest things on screen, so crossing $150 feels like an event, not a data point buried in a table.
+</div>
+
+<div class="frames">
+
+<!-- PHONE -->
+<div style="width:375px; background:#000; border-radius:38px; padding:12px; border:2px solid #222;">
+  <div style="background:#0A0A0A; border-radius:28px; overflow:hidden; min-height:720px;">
+    <div class="fired-banner">
+      <span>⚠ ALERT FIRED</span>
+      <span>GOOGL &gt; $150.00</span>
+    </div>
+    <div style="padding:16px;">
+      <div class="sym-huge">GOOGL</div>
+      <div class="price-huge" style="font-size:40px; margin:4px 0;">$152.40</div>
+      <div style="font-size:12px; color:#C6FF3D; font-weight:800; text-transform:uppercase;">+1.60% · CROSSED TARGET AT 03:12 AM</div>
+
+      <div class="chart-wrap" style="margin-top:16px; height:190px;">
+        <div class="alert-line" style="top:50%;"></div>
+        <div class="alert-tag" style="top:50%;">$150 TARGET</div>
+        <div class="current-line" style="top:28%;"></div>
+        <div class="current-tag" style="top:28%;">$152.40 NOW</div>
+        <div class="candles">
+          <div class="candle up" style="--bt:85%"></div>
+          <div class="candle up" style="--bt:80%"></div>
+          <div class="candle down" style="--bt:83%"></div>
+          <div class="candle up" style="--bt:76%"></div>
+          <div class="candle up" style="--bt:70%"></div>
+          <div class="candle down" style="--bt:72%"></div>
+          <div class="candle up" style="--bt:65%"></div>
+          <div class="candle up" style="--bt:59%"></div>
+          <div class="candle up" style="--bt:53%"></div>
+          <div class="candle up" style="--bt:45%"></div>
+          <div class="candle down" style="--bt:48%"></div>
+          <div class="candle up" style="--bt:40%"></div>
+          <div class="candle up" style="--bt:35%"></div>
+          <div class="candle up" style="--bt:28%"></div>
+        </div>
+      </div>
+
+      <div style="margin-top:18px; font-size:11px; font-weight:900; letter-spacing:1px; color:#5A5A5A;">YOUR ALERTS</div>
+      <div style="margin-top:10px;">
+        <div class="alert-block fired">
+          <div><div class="lbl">GOOGL &gt; $150</div></div>
+          <span class="pill fired">FIRED</span>
+        </div>
+        <div class="alert-block pending">
+          <div><div class="lbl">AAPL &gt; $180</div><div style="font-size:11px; margin-top:2px;">now $174.20</div></div>
+          <span class="pill pending">PENDING</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- LAPTOP -->
+<div style="width:1100px; background:#111; border-radius:10px; padding:8px 8px 16px; border:2px solid #222;">
+  <div style="display:flex; gap:6px; align-items:center; padding:4px 8px 10px;">
+    <div style="width:10px; height:10px; border-radius:50%; background:#4A4A4A;"></div>
+    <div style="width:10px; height:10px; border-radius:50%; background:#4A4A4A;"></div>
+    <div style="width:10px; height:10px; border-radius:50%; background:#4A4A4A;"></div>
+    <div style="flex:1; text-align:center; font-size:11px; color:#5A5A5A; background:#000; border:1px solid #222; padding:5px; margin:0 60px;">stockscout.app/googl</div>
+  </div>
+  <div class="fired-banner" style="margin-bottom:0;">
+    <span>⚠ ALERT FIRED OVERNIGHT</span>
+    <span>GOOGL CROSSED ABOVE $150.00 TARGET AT 03:12 AM</span>
+    <span>NOW $152.40</span>
+  </div>
+  <div style="background:#0A0A0A; display:flex; gap:0; min-height:480px;">
+    <div style="flex:1; padding:22px; border-right:2px solid #1A1A1A;">
+      <div class="sym-huge" style="font-size:28px;">GOOGL</div>
+      <div class="price-huge" style="font-size:56px; margin:6px 0;">$152.40</div>
+      <div style="font-size:14px; color:#C6FF3D; font-weight:800; text-transform:uppercase; margin-bottom:16px;">+1.60% TODAY · ALPHABET INC</div>
+      <div class="chart-wrap" style="height:340px;">
+        <div class="alert-line" style="top:50%;"></div>
+        <div class="alert-tag" style="top:50%; font-size:12px; padding:3px 10px;">$150.00 TARGET</div>
+        <div class="current-line" style="top:28%;"></div>
+        <div class="current-tag" style="top:28%; font-size:12px; padding:3px 10px;">$152.40 NOW</div>
+        <div class="candles" style="height:300px;">
+          <div class="candle up" style="--bt:85%"></div>
+          <div class="candle up" style="--bt:80%"></div>
+          <div class="candle down" style="--bt:83%"></div>
+          <div class="candle up" style="--bt:76%"></div>
+          <div class="candle up" style="--bt:70%"></div>
+          <div class="candle down" style="--bt:72%"></div>
+          <div class="candle up" style="--bt:65%"></div>
+          <div class="candle up" style="--bt:59%"></div>
+          <div class="candle up" style="--bt:53%"></div>
+          <div class="candle up" style="--bt:45%"></div>
+          <div class="candle down" style="--bt:48%"></div>
+          <div class="candle up" style="--bt:40%"></div>
+          <div class="candle up" style="--bt:35%"></div>
+          <div class="candle up" style="--bt:28%"></div>
+        </div>
+      </div>
+    </div>
+    <div style="width:300px; padding:22px;">
+      <div style="font-size:12px; font-weight:900; letter-spacing:1px; color:#5A5A5A; margin-bottom:14px;">YOUR ALERTS</div>
+      <div class="alert-block fired" style="display:block;">
+        <div class="lbl">GOOGL &gt; $150.00</div>
+        <div style="font-size:11px; margin-top:4px; color:#C6FF3D;">Fired 03:12 AM · now $152.40</div>
+        <span class="pill fired" style="display:inline-block; margin-top:10px;">FIRED</span>
+      </div>
+      <div class="alert-block pending" style="display:block;">
+        <div class="lbl">AAPL &gt; $180.00</div>
+        <div style="font-size:11px; margin-top:4px;">Currently $174.20</div>
+        <span class="pill pending" style="display:inline-block; margin-top:10px;">PENDING</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+</body>
+</html>
