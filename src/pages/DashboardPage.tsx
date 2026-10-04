@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useTheme } from "next-themes";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserStocks, useStockData } from "@/hooks/useStocks";
 import StockChart from "@/components/StockChart";
@@ -9,12 +10,13 @@ import TradesPanel from "@/components/TradesPanel";
 import AlertsPanel from "@/components/AlertsPanel";
 import WatchlistSidebar from "@/components/WatchlistSidebar";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, LogOut, Loader2 } from "lucide-react";
+import { TrendingUp, LogOut, Loader2, Sun, Moon } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Logo from "@/components/Logo";
 
 const DashboardPage: React.FC = () => {
   const { user, signOut } = useAuth();
+  const { resolvedTheme, setTheme } = useTheme();
   const { data: userStocks, isLoading: stocksLoading } = useUserStocks();
   const symbols = userStocks?.map((s) => s.symbol) ?? [];
   const { data: stocksData, isLoading: dataLoading } = useStockData(symbols);
@@ -36,6 +38,16 @@ const DashboardPage: React.FC = () => {
           </div>
           <div className="flex items-center gap-3">
             <span className="text-sm text-muted-foreground hidden sm:block">{user?.email}</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setTheme(resolvedTheme === "light" ? "dark" : "light")}
+              title={resolvedTheme === "light" ? "Switch to dark theme" : "Switch to light theme"}
+              aria-label={resolvedTheme === "light" ? "Switch to dark theme" : "Switch to light theme"}
+              aria-pressed={resolvedTheme !== "light"}
+            >
+              {resolvedTheme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+            </Button>
             <Button variant="ghost" size="sm" onClick={signOut}>
               <LogOut className="h-4 w-4 mr-1" /> Sign Out
             </Button>

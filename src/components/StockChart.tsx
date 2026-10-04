@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTheme } from "next-themes";
 import {
   createChart,
   CandlestickSeries,
@@ -65,6 +66,7 @@ function cssColor(varName: string, fallback: string): string {
 }
 
 const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
+  const { resolvedTheme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -135,6 +137,32 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // The colors above are read once at chart-creation time (lightweight-charts
+  // takes literal color strings, not CSS variables) — re-read and re-apply
+  // them whenever the user toggles light/dark, since the chart doesn't
+  // remount on a theme change.
+  useEffect(() => {
+    const chart = chartRef.current;
+    const candleSeries = candleSeriesRef.current;
+    if (!chart || !candleSeries) return;
+
+    chart.applyOptions({
+      layout: { textColor: cssColor("--muted-foreground", "#888") },
+      grid: {
+        vertLines: { color: cssColor("--border", "#333") },
+        horzLines: { color: cssColor("--border", "#333") },
+      },
+      rightPriceScale: { borderColor: cssColor("--border", "#333") },
+      timeScale: { borderColor: cssColor("--border", "#333") },
+    });
+    candleSeries.applyOptions({
+      upColor: cssColor("--stock-up", "#22c55e"),
+      downColor: cssColor("--stock-down", "#ef4444"),
+      wickUpColor: cssColor("--stock-up", "#22c55e"),
+      wickDownColor: cssColor("--stock-down", "#ef4444"),
+    });
+  }, [resolvedTheme]);
 
   // --- Feed candlestick data ---
   useEffect(() => {
