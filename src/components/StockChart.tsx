@@ -554,11 +554,20 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
     [sortedData, getPlotWidth]
   );
 
-  const handleCanvasPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return; // left-button only — right/middle-click shouldn't hijack panning
-    panRef.current = { startClientX: e.clientX, startRightEdgeIndex: viewRef.current.rightEdgeIndex };
-    (e.currentTarget as Element).setPointerCapture(e.pointerId);
-  }, []);
+  const handleCanvasPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return; // left-button only — right/middle-click shouldn't hijack panning
+      // Panning is cursor-tool-only. Capturing the pointer here unconditionally
+      // would redirect the *click* event to this wrapper too (per the Pointer
+      // Events spec, a capturing element also receives the synthesized mouse
+      // events for that pointer) — which silently ate every placement click
+      // for the drawing tools, since the SVG's own onClick never got to fire.
+      if (activeTool !== "cursor") return;
+      panRef.current = { startClientX: e.clientX, startRightEdgeIndex: viewRef.current.rightEdgeIndex };
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    },
+    [activeTool]
+  );
 
   const handleCanvasPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -1170,6 +1179,34 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
               </g>
             );
           })}
+          {activeTool !== "cursor" && hoverX != null && hoverY != null && !panRef.current && (() => {
+            const point = resolveFromPixel(hoverX, hoverY);
+            if (!point) return null;
+            const pixel = toPixel(point);
+            if (!pixel) return null;
+            const plotWidth = getPlotWidth();
+
+            if (activeTool === "horizontal") {
+              return (
+                <g key="tool-preview" style={{ pointerEvents: "none" }}>
+                  <line x1={0} y1={pixel.y} x2={plotWidth} y2={pixel.y} stroke={DRAWING_COLOR} strokeWidth={1.5} strokeDasharray="5 5" className="opacity-70" />
+                  <circle cx={pixel.x} cy={pixel.y} r={4} fill={DRAWING_COLOR} />
+                </g>
+              );
+            }
+
+            // Trendline/ray before the first point is placed — just the
+            // landing marker; once pendingPoint exists, renderableLines'
+            // own PREVIEW_ID entry already draws the live line-to-cursor.
+            if ((activeTool === "trendline" || activeTool === "ray") && !pendingPoint) {
+              return (
+                <g key="tool-preview" style={{ pointerEvents: "none" }}>
+                  <circle cx={pixel.x} cy={pixel.y} r={4} fill={DRAWING_COLOR} />
+                </g>
+              );
+            }
+            return null;
+          })()}
           {activeTool === "cursor" && hoverY != null && !panRef.current && !dragState && !alertDragState && (() => {
             const plotWidth = getPlotWidth();
             const hoverPrice = yToPrice(hoverY);

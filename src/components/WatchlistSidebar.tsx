@@ -40,6 +40,7 @@ interface WatchlistSidebarProps {
   stocksData: Record<string, StockDataPoint[]> | undefined;
   selectedSymbol: string | null;
   onSelectSymbol: (symbol: string | null) => void;
+  onViewChart: (symbol: string) => void;
 }
 
 interface SymbolRowProps {
@@ -113,7 +114,7 @@ const SymbolRow: React.FC<SymbolRowProps> = ({ symbol, data, selected, removing,
   );
 };
 
-const WatchlistSidebar: React.FC<WatchlistSidebarProps> = ({ stocksData, selectedSymbol, onSelectSymbol }) => {
+const WatchlistSidebar: React.FC<WatchlistSidebarProps> = ({ stocksData, selectedSymbol, onSelectSymbol, onViewChart }) => {
   const { data: lists, isLoading } = useWatchlistLists();
   const createList = useCreateWatchlistList();
   const deleteList = useDeleteWatchlistList();
@@ -272,7 +273,7 @@ const WatchlistSidebar: React.FC<WatchlistSidebarProps> = ({ stocksData, selecte
 
       {activeListId && (
         <div className="p-2 border-b border-border">
-          <AddStockForm listId={activeListId} />
+          <AddStockForm listId={activeListId} onViewChart={onViewChart} />
         </div>
       )}
 

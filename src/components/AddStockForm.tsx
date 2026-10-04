@@ -8,9 +8,10 @@ import { validateStock } from "@/lib/stockApi";
 
 interface AddStockFormProps {
   listId: string;
+  onViewChart: (symbol: string) => void;
 }
 
-const AddStockForm: React.FC<AddStockFormProps> = ({ listId }) => {
+const AddStockForm: React.FC<AddStockFormProps> = ({ listId, onViewChart }) => {
   const [symbol, setSymbol] = useState("");
   const [validating, setValidating] = useState(false);
   const addStock = useAddStock();
@@ -47,6 +48,7 @@ const AddStockForm: React.FC<AddStockFormProps> = ({ listId }) => {
         onChange={setSymbol}
         placeholder="Enter stock symbol (e.g. AAPL)"
         disabled={isLoading}
+        onSelectTracked={onViewChart}
       />
       <Button type="submit" disabled={isLoading || !symbol.trim()}>
         {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}

@@ -22,10 +22,19 @@ const DashboardPage: React.FC = () => {
   const { data: stocksData, isLoading: dataLoading } = useStockData(symbols);
 
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("chart");
 
   const isLoading = stocksLoading || dataLoading;
   const activeSymbol = selectedSymbol ?? symbols[0] ?? null;
   const activeSymbolData = activeSymbol && stocksData?.[activeSymbol];
+
+  // Explicit "view this symbol's chart" action (from the watchlist-form
+  // autocomplete) — unlike a plain watchlist-row click, this also forces the
+  // Chart tab open, since the whole point is to jump straight to the chart.
+  const goToChart = (symbol: string) => {
+    setSelectedSymbol(symbol);
+    setActiveTab("chart");
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -65,7 +74,7 @@ const DashboardPage: React.FC = () => {
         <div className="flex flex-col lg:flex-row gap-4">
           {/* Main content */}
           <div className="flex-1 min-w-0">
-            <Tabs defaultValue="chart" className="space-y-4">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
               <TabsList>
                 <TabsTrigger value="chart">Chart</TabsTrigger>
                 <TabsTrigger value="analysis">Analysis</TabsTrigger>
@@ -110,7 +119,12 @@ const DashboardPage: React.FC = () => {
           </div>
 
           {/* Persistent watchlist sidebar */}
-          <WatchlistSidebar stocksData={stocksData} selectedSymbol={activeSymbol} onSelectSymbol={setSelectedSymbol} />
+          <WatchlistSidebar
+            stocksData={stocksData}
+            selectedSymbol={activeSymbol}
+            onSelectSymbol={setSelectedSymbol}
+            onViewChart={goToChart}
+          />
         </div>
       </main>
     </div>
