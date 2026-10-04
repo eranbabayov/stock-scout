@@ -67,6 +67,12 @@ export default {
           down: "hsl(var(--stock-down))",
           neutral: "hsl(var(--stock-neutral))",
         },
+        alert: {
+          pending: "hsl(var(--alert-pending))",
+          "pending-bg": "hsl(var(--alert-pending-bg))",
+          fired: "hsl(var(--alert-fired))",
+          "fired-bg": "hsl(var(--alert-fired-bg))",
+        },
         chart: {
           "1": "hsl(var(--chart-1))",
           "2": "hsl(var(--chart-2))",

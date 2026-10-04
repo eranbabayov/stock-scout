@@ -40,6 +40,11 @@
     --stock-down: 0 84% 60%;
     --stock-neutral: 220 10% 50%;
 
+    --alert-pending: 38 92% 45%;
+    --alert-pending-bg: 45 100% 94%;
+    --alert-fired: 142 71% 35%;
+    --alert-fired-bg: 142 40% 94%;
+
     --chart-1: 142 60% 40%;
     --chart-2: 200 80% 50%;
     --chart-3: 280 65% 60%;
@@ -90,6 +95,11 @@
     --stock-up: 174 63% 40%;
     --stock-down: 1 83% 63%;
     --stock-neutral: 218 9% 47%;
+
+    --alert-pending: 43 100% 50%;
+    --alert-pending-bg: 45 68% 17%;
+    --alert-fired: 154 69% 55%;
+    --alert-fired-bg: 153 47% 11%;
 
     --sidebar-background: 218 25% 10%;
     --sidebar-foreground: 215 20% 90%;
