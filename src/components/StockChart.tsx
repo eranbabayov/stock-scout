@@ -611,6 +611,11 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
       // frozen at drag-start, so changing barSpacing/rightEdgeIndex mid-drag
       // would make that baseline inconsistent and the line visibly warp.
       if (dragState) return;
+      // Disabled while actively panning: trackpads commonly fire wheel
+      // events during what feels like a single click-drag gesture (e.g. a
+      // two-finger pan). Letting both handlers touch viewRef in the same
+      // gesture compounds into a pan that also zooms unexpectedly.
+      if (panRef.current) return;
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
       const cursorX = e.clientX - rect.left;
