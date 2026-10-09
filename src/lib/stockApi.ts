@@ -34,7 +34,7 @@ export interface StockQuote {
 export async function fetchStockData(symbols: string[]): Promise<Record<string, StockDataPoint[]>> {
   return apiFetch("/stock-data/fetch", {
     method: "POST",
-    body: JSON.stringify({ symbols, period: "1y" }),
+    body: JSON.stringify({ symbols, period: "5y" }),
   });
 }
 

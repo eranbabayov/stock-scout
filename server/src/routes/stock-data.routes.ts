@@ -14,7 +14,7 @@ stockDataRouter.post("/fetch", async (req, res) => {
     throw new HttpError(400, "symbols array is required");
   }
 
-  const results = await fetchStockData(symbols, period ?? "1y");
+  const results = await fetchStockData(symbols, period ?? "5y");
   res.json(results);
 });
 

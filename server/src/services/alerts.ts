@@ -56,7 +56,7 @@ export async function createMovingAverageAlert(
 
   const [currentPrice, historical] = await Promise.all([
     getCurrentPrice(symbol),
-    fetchStockData([symbol], "1y").then((r) => r[symbol]),
+    fetchStockData([symbol], "5y").then((r) => r[symbol]),
   ]);
   if (currentPrice == null || !Array.isArray(historical) || historical.length === 0) {
     return { ok: false, reason: "no_price_data" };
@@ -163,7 +163,7 @@ export async function checkAlerts(): Promise<void> {
     Promise.all(symbols.map(async (symbol) => [symbol, await getCurrentPrice(symbol)] as const)).then(
       (entries) => Object.fromEntries(entries) as Record<string, number | null>
     ),
-    fetchStockData(symbols, "1y"),
+    fetchStockData(symbols, "5y"),
   ]);
 
   let triggeredCount = 0;

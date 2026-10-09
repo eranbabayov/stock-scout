@@ -56,13 +56,13 @@ function getLastTradingDay(): string {
 }
 
 async function getCachedRows(symbol: string): Promise<StockRow[]> {
-  const oneYearAgo = new Date();
-  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+  const fiveYearsAgo = new Date();
+  fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
 
   const rows = await db
     .select()
     .from(stockCache)
-    .where(and(eq(stockCache.symbol, symbol), gte(stockCache.date, oneYearAgo.toISOString().split("T")[0])))
+    .where(and(eq(stockCache.symbol, symbol), gte(stockCache.date, fiveYearsAgo.toISOString().split("T")[0])))
     .orderBy(asc(stockCache.date));
 
   return rows as unknown as StockRow[];
@@ -70,8 +70,7 @@ async function getCachedRows(symbol: string): Promise<StockRow[]> {
 
 async function fetchFromYahoo(symbol: string, period: string, cachedData: StockRow[]): Promise<StockRow[] | { error: string }> {
   try {
-    const range = period === "1y" ? "1y" : period;
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=${range}&interval=1d`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=${period}&interval=1d`;
 
     const yahooRes = await fetch(url, {
       headers: { "User-Agent": "Mozilla/5.0" },
@@ -138,8 +137,10 @@ async function fetchFromYahoo(symbol: string, period: string, cachedData: StockR
 async function fetchAndCacheSymbol(symbol: string, period: string): Promise<StockRow[] | { error: string }> {
   const cachedData = await getCachedRows(symbol);
 
+  // ~252 trading days/year * 5 years ~= 1260; 1000 leaves slack for holidays
+  // and symbols with less than a full 5 years of trading history.
   const hasRecentData =
-    cachedData.length > 200 && cachedData[cachedData.length - 1]?.date >= getLastTradingDay();
+    cachedData.length > 1000 && cachedData[cachedData.length - 1]?.date >= getLastTradingDay();
 
   if (hasRecentData) {
     return cachedData;

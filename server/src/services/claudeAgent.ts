@@ -282,7 +282,7 @@ function buildTools(userId: string, mode: AgentMode, includePlaybookTool: boolea
       const symbols = await getWatchlistSymbols(userId);
       if (symbols.length === 0) return "The watchlist is empty, nothing to screen.";
 
-      const raw = await fetchStockData(symbols, "1y");
+      const raw = await fetchStockData(symbols, "5y");
       const stocksData: Record<string, StockDataPoint[]> = {};
       for (const [symbol, rows] of Object.entries(raw)) {
         if (Array.isArray(rows)) stocksData[symbol] = rows as StockRow[] as StockDataPoint[];
