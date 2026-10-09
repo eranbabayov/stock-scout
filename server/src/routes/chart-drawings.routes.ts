@@ -7,7 +7,7 @@ export const chartDrawingsRouter = Router();
 
 chartDrawingsRouter.use(requireAuth);
 
-const VALID_TYPES: DrawingType[] = ["trendline", "ray", "horizontal"];
+const VALID_TYPES: DrawingType[] = ["trendline", "ray", "horizontal", "fib"];
 
 chartDrawingsRouter.get("/", async (req, res) => {
   const { symbol } = req.query;

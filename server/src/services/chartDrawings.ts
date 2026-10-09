@@ -2,7 +2,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { chartDrawings, type ChartDrawing } from "../db/schema";
 
-export type DrawingType = "trendline" | "ray" | "horizontal";
+export type DrawingType = "trendline" | "ray" | "horizontal" | "fib";
 
 export interface CreateDrawingInput {
   symbol: string;

@@ -1,0 +1,1 @@
+ALTER TYPE "public"."drawing_type" ADD VALUE 'fib';

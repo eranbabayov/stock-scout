@@ -5,7 +5,7 @@ export const alertKindEnum = pgEnum("alert_kind", ["price", "moving_average"]);
 export const alertDirectionEnum = pgEnum("alert_direction", ["above", "below"]);
 export const alertStatusEnum = pgEnum("alert_status", ["active", "triggered"]);
 export const movingAverageTypeEnum = pgEnum("moving_average_type", ["EMA", "SMA"]);
-export const drawingTypeEnum = pgEnum("drawing_type", ["trendline", "ray", "horizontal"]);
+export const drawingTypeEnum = pgEnum("drawing_type", ["trendline", "ray", "horizontal", "fib"]);
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -132,10 +132,13 @@ export const stockAlerts = pgTable(
   (t) => [index("idx_stock_alerts_status_symbol").on(t.status, t.symbol)],
 );
 
-// A user-drawn trendline/ray/horizontal line on a symbol's chart. Anchored to
-// bars by their actual date (not a raw pixel/time value), so a magnet-snapped
-// drawing stays correctly pinned to that bar's close across re-renders.
-// p2Date/p2Price are unused for "horizontal" (only p1Price matters there).
+// A user-drawn trendline/ray/horizontal line/fib retracement on a symbol's
+// chart. Anchored to bars by their actual date (not a raw pixel/time value),
+// so a magnet-snapped drawing stays correctly pinned to that bar's close
+// across re-renders. p2Date/p2Price are unused for "horizontal" (only
+// p1Price matters there); "fib" uses p1/p2 as its 0%/100% anchors, with the
+// intermediate retracement levels derived from those two prices at render
+// time rather than stored.
 export const chartDrawings = pgTable(
   "chart_drawings",
   {

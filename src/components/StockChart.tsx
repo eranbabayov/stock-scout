@@ -22,7 +22,7 @@ import {
 import type { DrawingType, ChartDrawing, StockAlert } from "@/lib/types";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
-import { MousePointer2, Slash, MoveUpRight, Minus, Magnet, Trash2 } from "lucide-react";
+import { MousePointer2, Slash, MoveUpRight, Minus, Magnet, Trash2, Percent } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +40,10 @@ const MA_COLORS: Record<string, string> = {
 };
 
 const DRAWING_COLOR = "#3b82f6";
+// Standard Fibonacci retracement ratios. p1 (the tool's first click) is 0%,
+// p2 (the second click) is 100% — intermediate levels are derived from those
+// two anchor prices at render time, never stored.
+const FIB_LEVELS = [0, 23.6, 38.2, 50, 61.8, 78.6, 100];
 const PREVIEW_ID = "__preview__";
 const MOVE_THRESHOLD_PX = 3;
 const MIN_BAR_SPACING = 2;
@@ -959,6 +963,7 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
     y2: number;
     selected: boolean;
     preview: boolean;
+    dashed: boolean;
     handles: { x: number; y: number; which: "p1" | "p2" }[];
     drawing: ChartDrawing | null;
   }
@@ -973,7 +978,7 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
       const selected = id === selectedDrawingId;
 
       if (d.type === "horizontal") {
-        lines.push({ id, x1: 0, y1: p1.y, x2: width, y2: p1.y, selected, preview, handles: selected ? [{ x: p1.x, y: p1.y, which: "p1" }] : [], drawing });
+        lines.push({ id, x1: 0, y1: p1.y, x2: width, y2: p1.y, selected, preview, dashed: false, handles: selected ? [{ x: p1.x, y: p1.y, which: "p1" }] : [], drawing });
         return;
       }
 
@@ -987,19 +992,23 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
           ]
         : [];
 
-      if (d.type === "trendline") {
-        lines.push({ id, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, selected, preview, handles, drawing });
+      // Trendline and fib both render as a direct p1->p2 connector — fib's
+      // retracement levels are drawn separately (see fibLevelLines) using
+      // this same drawing's p1/p2 prices, so this connector is just the
+      // visual anchor line, dashed to distinguish it from the level lines.
+      if (d.type === "trendline" || d.type === "fib") {
+        lines.push({ id, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, selected, preview, dashed: d.type === "fib", handles, drawing });
         return;
       }
 
       // Ray: extend the p1->p2 line to the chart's current right edge.
       if (p2.x === p1.x) {
-        lines.push({ id, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, selected, preview, handles, drawing });
+        lines.push({ id, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, selected, preview, dashed: false, handles, drawing });
         return;
       }
       const slope = (p2.y - p1.y) / (p2.x - p1.x);
       const extendedY = p1.y + slope * (width - p1.x);
-      lines.push({ id, x1: p1.x, y1: p1.y, x2: width, y2: extendedY, selected, preview, handles, drawing });
+      lines.push({ id, x1: p1.x, y1: p1.y, x2: width, y2: extendedY, selected, preview, dashed: false, handles, drawing });
     };
 
     for (const d of drawings) {
@@ -1008,7 +1017,7 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
       project({ ...points, type: d.type }, d.id, false, d);
     }
 
-    if (pendingPoint && previewPoint && (activeTool === "trendline" || activeTool === "ray")) {
+    if (pendingPoint && previewPoint && (activeTool === "trendline" || activeTool === "ray" || activeTool === "fib")) {
       project(
         { type: activeTool, p1Date: pendingPoint.date, p1Price: pendingPoint.price, p2Date: previewPoint.date, p2Price: previewPoint.price },
         PREVIEW_ID,
@@ -1021,6 +1030,51 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
     // redrawTick intentionally triggers a recompute even though it's not read directly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drawings, selectedDrawingId, pendingPoint, previewPoint, activeTool, toPixel, redrawTick, dragState, dragCurrent]);
+
+  interface FibLevelLine {
+    key: string;
+    y: number;
+    label: string;
+    selected: boolean;
+    preview: boolean;
+  }
+
+  // The 7 retracement levels, derived purely from a fib drawing's p1/p2
+  // prices (0% = p1, 100% = p2) — never stored themselves, so they always
+  // stay in sync with the connector line (including live while dragging it,
+  // via dragCurrent, and live while placing a new one, via pendingPoint).
+  // Rendered full-width (not extended like a ray from the anchor) so every
+  // level reads clearly across the whole visible chart, matching the
+  // reference layout.
+  const fibLevelLines = useMemo((): FibLevelLine[] => {
+    const lines: FibLevelLine[] = [];
+
+    const project = (p1Price: number, p2Price: number, idPrefix: string, selected: boolean, preview: boolean) => {
+      for (const pct of FIB_LEVELS) {
+        const price = p1Price + (p2Price - p1Price) * (pct / 100);
+        const y = priceToY(price);
+        if (y == null) continue;
+        lines.push({ key: `${idPrefix}-${pct}`, y, label: `${pct.toFixed(1)}% (${price.toFixed(2)})`, selected, preview });
+      }
+    };
+
+    for (const d of drawings) {
+      if (d.type !== "fib") continue;
+      const useDragValues = dragState?.drawingId === d.id && dragCurrent;
+      const p1Price = useDragValues ? dragCurrent!.p1Price : d.p1Price;
+      const p2Price = useDragValues ? dragCurrent!.p2Price : d.p2Price;
+      if (p2Price == null) continue;
+      project(p1Price, p2Price, d.id, d.id === selectedDrawingId, false);
+    }
+
+    if (pendingPoint && previewPoint && activeTool === "fib") {
+      project(pendingPoint.price, previewPoint.price, PREVIEW_ID, false, true);
+    }
+
+    return lines;
+    // redrawTick intentionally triggers a recompute even though it's not read directly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawings, selectedDrawingId, pendingPoint, previewPoint, activeTool, priceToY, redrawTick, dragState, dragCurrent]);
 
   interface PriceMarker {
     id: string;
@@ -1152,6 +1206,15 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
         >
           <Minus className="h-4 w-4" />
         </Button>
+        <Button
+          variant={activeTool === "fib" ? "default" : "ghost"}
+          size="icon"
+          className="h-8 w-8"
+          title="Fibonacci Retracement"
+          onClick={() => setActiveTool("fib")}
+        >
+          <Percent className="h-4 w-4" />
+        </Button>
         <div className="w-px h-5 bg-border mx-1" />
         <Button
           variant={magnetOn ? "default" : "ghost"}
@@ -1240,7 +1303,7 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
                 y2={line.y2}
                 stroke={line.selected ? "hsl(var(--primary))" : DRAWING_COLOR}
                 strokeWidth={line.selected ? 2.5 : 1.5}
-                strokeDasharray={line.preview ? "5 5" : undefined}
+                strokeDasharray={line.preview || line.dashed ? "5 5" : undefined}
                 className={cn(line.preview && "opacity-70")}
                 style={{ pointerEvents: "none" }}
               />
@@ -1259,6 +1322,26 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
               ))}
             </g>
           ))}
+          {fibLevelLines.map((fl) => {
+            const plotWidth = getPlotWidth();
+            const color = fl.selected ? "hsl(var(--primary))" : DRAWING_COLOR;
+            return (
+              <g key={fl.key} style={{ pointerEvents: "none" }} className={cn(fl.preview && "opacity-70")}>
+                <line
+                  x1={0}
+                  y1={fl.y}
+                  x2={plotWidth}
+                  y2={fl.y}
+                  stroke={color}
+                  strokeWidth={fl.selected ? 1.5 : 1}
+                  strokeDasharray="4 4"
+                />
+                <text x={4} y={fl.y - 4} fontSize={10} fontFamily="monospace" fill={color}>
+                  {fl.label}
+                </text>
+              </g>
+            );
+          })}
           {priceMarkers.map((marker) => {
             const width = getPlotWidth();
             const tagWidth = marker.label.length * 6.5 + 12;
@@ -1334,10 +1417,11 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
               );
             }
 
-            // Trendline/ray before the first point is placed — just the
+            // Trendline/ray/fib before the first point is placed — just the
             // landing marker; once pendingPoint exists, renderableLines'
-            // own PREVIEW_ID entry already draws the live line-to-cursor.
-            if ((activeTool === "trendline" || activeTool === "ray") && !pendingPoint) {
+            // own PREVIEW_ID entry already draws the live line-to-cursor
+            // (and, for fib, fibLevelLines draws the live level preview too).
+            if ((activeTool === "trendline" || activeTool === "ray" || activeTool === "fib") && !pendingPoint) {
               return (
                 <g key="tool-preview" style={{ pointerEvents: "none" }}>
                   <circle cx={pixel.x} cy={pixel.y} r={4} fill={DRAWING_COLOR} />
