@@ -500,7 +500,15 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
 
       if (magnetOn) {
         const bar = findNearestBar(x);
-        return bar ? { date: bar.date, price: bar.close } : null;
+        if (!bar) return null;
+        // Snap to whichever of this bar's real price points (open/high/low/
+        // close) is nearest the hovered Y — not always close. This clamps
+        // naturally at the extremes: below the low, low is nearest; above
+        // the high, high is nearest.
+        const hoveredPrice = yToPrice(y);
+        const candidates = [bar.open ?? bar.close, bar.high ?? bar.close, bar.low ?? bar.close, bar.close];
+        const snapped = candidates.reduce((best, p) => (Math.abs(p - hoveredPrice) < Math.abs(best - hoveredPrice) ? p : best));
+        return { date: bar.date, price: snapped };
       }
 
       // The data is daily bars with no continuous date domain between them —
