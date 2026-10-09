@@ -73,12 +73,87 @@ function cssColor(varName: string, fallback: string): string {
   return value ? `hsl(${value})` : fallback;
 }
 
-function formatAxisDate(dateStr: string): string {
+type CandleInterval = "1d" | "1w" | "1mo" | "1y";
+
+// Always includes the year — with 5 years of history loaded, the same
+// "Mar 17" label otherwise repeats every year with no way to tell them
+// apart. Explicit "en-US" throughout, not the browser's locale — a
+// Hebrew/Arabic/etc. locale would localize month names and digit shapes,
+// which doesn't match the rest of this app's English/numeric UI.
+function formatAxisDate(dateStr: string, interval: CandleInterval): string {
   const d = new Date(dateStr + "T00:00:00");
-  // Explicit "en-US", not the browser's locale — a Hebrew/Arabic/etc.
-  // locale would otherwise localize month names and digit shapes, which
-  // doesn't match the rest of this app's English/numeric UI.
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const year2 = `'${String(d.getFullYear()).slice(-2)}`;
+  const month = d.toLocaleDateString("en-US", { month: "short" });
+  if (interval === "1y") return `'${String(d.getFullYear())}`;
+  if (interval === "1mo") return `${month} ${year2}`;
+  const day = String(d.getDate()).padStart(2, "0");
+  if (interval === "1w") return `${day} ${month} ${year2}`;
+  const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
+  return `${weekday} ${day} ${month} ${year2}`;
+}
+
+// Aggregates daily bars into weekly/monthly/yearly OHLC candles. Also
+// returns a map from every individual daily date to the bucket date that
+// contains it, so a drawing/alert anchored to a specific day can still be
+// resolved to the correct candle in any timeframe — switching timeframe
+// repositions it, it never disappears.
+//
+// Formats a Date's LOCAL calendar date as YYYY-MM-DD — deliberately not
+// toISOString(), which converts to UTC first: in any timezone ahead of UTC
+// (e.g. Israel, UTC+2/+3), local midnight serializes to the *previous*
+// day's date, silently shifting every week/month/year bucket back by one day.
+function toDateString(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function periodBucketKey(dateStr: string, interval: CandleInterval): string {
+  const d = new Date(dateStr + "T00:00:00");
+  if (interval === "1y") return `${d.getFullYear()}-01-01`;
+  if (interval === "1mo") return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  if (interval === "1w") {
+    const day = d.getDay(); // 0=Sun..6=Sat
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+    const monday = new Date(d);
+    monday.setDate(d.getDate() + diffToMonday);
+    return toDateString(monday);
+  }
+  return dateStr;
+}
+
+function aggregateData(
+  data: StockDataPoint[],
+  interval: CandleInterval
+): { candles: StockDataPoint[]; dateToBucket: Map<string, string> } {
+  if (interval === "1d") {
+    return { candles: data, dateToBucket: new Map(data.map((d) => [d.date, d.date])) };
+  }
+
+  const buckets = new Map<string, StockDataPoint[]>();
+  const dateToBucket = new Map<string, string>();
+  for (const bar of data) {
+    const key = periodBucketKey(bar.date, interval);
+    dateToBucket.set(bar.date, key);
+    const bucket = buckets.get(key);
+    if (bucket) bucket.push(bar);
+    else buckets.set(key, [bar]);
+  }
+
+  // `data` is chronologically sorted and Map preserves insertion order, so
+  // iterating buckets here yields chronologically sorted candles for free.
+  const candles: StockDataPoint[] = [];
+  for (const [key, bars] of buckets) {
+    candles.push({
+      symbol: bars[0].symbol,
+      date: key,
+      open: bars[0].open ?? bars[0].close,
+      close: bars[bars.length - 1].close,
+      high: Math.max(...bars.map((b) => b.high ?? b.close)),
+      low: Math.min(...bars.map((b) => b.low ?? b.close)),
+      volume: bars.reduce((sum, b) => sum + (b.volume ?? 0), 0) || null,
+    });
+  }
+
+  return { candles, dateToBucket };
 }
 
 // --- View state: owns what range of bars and prices is visible ---
@@ -105,6 +180,7 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
   const panRef = useRef<{ startClientX: number; startRightEdgeIndex: number } | null>(null);
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [hoverY, setHoverY] = useState<number | null>(null);
+  const [interval, setIntervalState] = useState<CandleInterval>("1d");
 
   // --- Dragging an existing drawing's endpoint, or the whole line — state
   // declared early since handleCanvasWheel (below) needs to read dragState ---
@@ -186,10 +262,27 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
   );
 
   const sortedData = useMemo(() => [...data].sort((a, b) => a.date.localeCompare(b.date)), [data]);
+  // Always the true latest daily close, regardless of the selected
+  // timeframe — the current-price marker shouldn't reflect a stale
+  // aggregated-bucket artifact.
   const currentQuote = useMemo(() => getQuoteFromData(sortedData), [sortedData]);
-  // Shared date -> array-index lookup — built once per data change instead of
-  // re-scanning sortedData with findIndex() on every coordinate conversion.
-  const dateToIndex = useMemo(() => new Map(sortedData.map((d, i) => [d.date, i])), [sortedData]);
+
+  // The dataset actually rendered — raw daily bars, or aggregated
+  // weekly/monthly/yearly candles, per the selected timeframe.
+  const { candles: activeData, dateToBucket } = useMemo(() => aggregateData(sortedData, interval), [sortedData, interval]);
+
+  // Resolves any stored calendar date (from a drawing/alert — always a real
+  // daily date) to its index within the active dataset. The day->bucket map
+  // makes this work in every timeframe, not just the one a point was
+  // originally placed in — switching timeframe repositions it, never hides it.
+  const activeIndexOf = useMemo(() => {
+    const bucketToIndex = new Map(activeData.map((d, i) => [d.date, i]));
+    return (date: string): number | null => {
+      const bucket = interval === "1d" ? date : dateToBucket.get(date);
+      if (bucket == null) return null;
+      return bucketToIndex.get(bucket) ?? null;
+    };
+  }, [activeData, dateToBucket, interval]);
 
   const bumpRedraw = useCallback(() => setRedrawTick((n) => n + 1), []);
 
@@ -236,14 +329,14 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
     return top - (y / height) * (top - bottom);
   }, []);
 
-  // --- Fit-to-data: whenever the symbol's data changes, show the whole
-  // history and let the price range recompute for it — mirrors the old
-  // fitContent() + forced autoScale reset (and fixes the same "stuck on the
-  // old symbol's price range" bug by construction, since price range is
+  // --- Fit-to-data: whenever the symbol or timeframe changes, show the
+  // whole history and let the price range recompute for it — mirrors the
+  // old fitContent() + forced autoScale reset (and fixes the same "stuck on
+  // the old symbol's price range" bug by construction, since price range is
   // always derived fresh from whatever's visible, never a sticky override).
   useEffect(() => {
     didFitRef.current = false;
-  }, [symbol]);
+  }, [symbol, interval]);
 
   // --- Resize: keep the canvas's backing resolution in sync with its CSS
   // size (device-pixel-ratio aware, so text/lines stay crisp) ---
@@ -278,24 +371,27 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
     const plotWidth = getPlotWidth();
-    if (width === 0 || height === 0 || sortedData.length === 0) {
+    if (width === 0 || height === 0 || activeData.length === 0) {
       ctx.clearRect(0, 0, width, height);
       return;
     }
 
     // Fit the whole dataset into view the first time this symbol's data
-    // arrives (or after a symbol switch resets didFitRef above).
+    // arrives (or after a symbol/timeframe switch resets didFitRef above).
+    // No lower clamp — the whole point is to always be able to see
+    // everything on load; only an upper clamp keeps a short history from
+    // rendering as absurdly fat candles.
     if (!didFitRef.current) {
-      const spacing = Math.min(MAX_BAR_SPACING, Math.max(MIN_BAR_SPACING, plotWidth / sortedData.length));
-      viewRef.current = { rightEdgeIndex: sortedData.length - 1, barSpacing: spacing };
+      const spacing = Math.min(MAX_BAR_SPACING, plotWidth / activeData.length);
+      viewRef.current = { rightEdgeIndex: activeData.length - 1, barSpacing: spacing };
       didFitRef.current = true;
     }
 
     const { rightEdgeIndex, barSpacing } = viewRef.current;
     const visibleBars = plotWidth / barSpacing;
     const firstIndex = Math.max(0, Math.floor(rightEdgeIndex - visibleBars));
-    const lastIndex = Math.min(sortedData.length - 1, Math.ceil(rightEdgeIndex));
-    const visible = sortedData.slice(firstIndex, lastIndex + 1);
+    const lastIndex = Math.min(activeData.length - 1, Math.ceil(rightEdgeIndex));
+    const visible = activeData.slice(firstIndex, lastIndex + 1);
 
     // Price range auto-fits to whatever's currently visible, always — there
     // is no manual override to get stuck, unlike the old library's autoScale flag.
@@ -342,7 +438,7 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     for (let i = firstIndex; i <= lastIndex; i += tickEvery) {
-      const bar = sortedData[i];
+      const bar = activeData[i];
       if (!bar) continue;
       const x = indexToX(i);
       ctx.strokeStyle = borderColor;
@@ -351,13 +447,13 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
       ctx.lineTo(x, height);
       ctx.stroke();
       ctx.fillStyle = textColor;
-      ctx.fillText(formatAxisDate(bar.date), x, height - 14);
+      ctx.fillText(formatAxisDate(bar.date, interval), x, height - 14);
     }
 
     // Candles
     const bodyWidth = Math.max(1, barSpacing * 0.6);
     for (let i = firstIndex; i <= lastIndex; i++) {
-      const bar = sortedData[i];
+      const bar = activeData[i];
       if (!bar) continue;
       const x = indexToX(i);
       const open = bar.open ?? bar.close;
@@ -379,11 +475,14 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
       ctx.fillRect(x - bodyWidth / 2, bodyTop, bodyWidth, bodyHeight);
     }
 
-    // MA overlays
+    // MA overlays — period counts *displayed* candles (days, weeks, months,
+    // or years, per the active timeframe), matching how real trading
+    // platforms tie an indicator's period to the chart's own timeframe.
+    const maDateToIndex = new Map(activeData.map((d, i) => [d.date, i]));
     for (const indicator of selectedIndicators) {
       const key = maIndicatorKey(indicator);
-      const values = indicator.type === "SMA" ? calcSMA(sortedData, indicator.period) : calcEMA(sortedData, indicator.period);
-      const byDate = dateToIndex;
+      const values = indicator.type === "SMA" ? calcSMA(activeData, indicator.period) : calcEMA(activeData, indicator.period);
+      const byDate = maDateToIndex;
       ctx.strokeStyle = MA_COLORS[key];
       ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -430,9 +529,9 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
 
       // Highlighted date readout + OHLC readout for the nearest hovered bar.
       const hoveredIndex = Math.round(xToIndex(hoverX));
-      const hoveredBar = sortedData[Math.min(Math.max(hoveredIndex, 0), sortedData.length - 1)];
+      const hoveredBar = activeData[Math.min(Math.max(hoveredIndex, 0), activeData.length - 1)];
       if (hoveredBar) {
-        const dateLabel = formatAxisDate(hoveredBar.date);
+        const dateLabel = formatAxisDate(hoveredBar.date, interval);
         ctx.font = "11px monospace";
         const dateLabelWidth = ctx.measureText(dateLabel).width + 12;
         const dateX = Math.min(Math.max(hoverX - dateLabelWidth / 2, 0), plotWidth - dateLabelWidth);
@@ -457,7 +556,8 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
       }
     }
   }, [
-    sortedData,
+    activeData,
+    interval,
     selectedIndicators,
     themeColors,
     redrawTick,
@@ -471,7 +571,6 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
     xToIndex,
     yToPrice,
     symbol,
-    dateToIndex,
   ]);
 
   const toggleIndicator = (indicator: MovingAverageIndicator) => {
@@ -487,16 +586,16 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
   // so what the mouse points at and what gets rendered can never disagree.
   const findNearestBar = useCallback(
     (x: number): StockDataPoint | null => {
-      if (sortedData.length === 0) return null;
+      if (activeData.length === 0) return null;
       const index = Math.round(xToIndex(x));
-      return sortedData[Math.min(Math.max(index, 0), sortedData.length - 1)] ?? null;
+      return activeData[Math.min(Math.max(index, 0), activeData.length - 1)] ?? null;
     },
-    [sortedData, xToIndex]
+    [activeData, xToIndex]
   );
 
   const resolveFromPixel = useCallback(
     (x: number, y: number): Point | null => {
-      if (sortedData.length === 0) return null;
+      if (activeData.length === 0) return null;
 
       if (magnetOn) {
         const bar = findNearestBar(x);
@@ -517,7 +616,7 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
       if (!bar) return null;
       return { date: bar.date, price: yToPrice(y) };
     },
-    [magnetOn, findNearestBar, sortedData, yToPrice]
+    [magnetOn, findNearestBar, activeData, yToPrice]
   );
 
   const resolvePointFromClientXY = useCallback(
@@ -532,11 +631,11 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
 
   const toPixel = useCallback(
     (p: Point): { x: number; y: number } | null => {
-      const index = dateToIndex.get(p.date);
+      const index = activeIndexOf(p.date);
       if (index == null) return null;
       return { x: indexToX(index), y: priceToYRaw(p.price) };
     },
-    [dateToIndex, indexToX, priceToYRaw]
+    [activeIndexOf, indexToX, priceToYRaw]
   );
 
   // A horizontal marker only ever needs a y — a read-only price-level marker
@@ -553,14 +652,23 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
   // past the most recent bar on the other.
   const clampRightEdgeIndex = useCallback(
     (index: number, barSpacing: number): number => {
-      if (sortedData.length === 0) return index;
+      if (activeData.length === 0) return index;
       const visibleBars = getPlotWidth() / barSpacing;
       const min = 0;
-      const max = sortedData.length - 1 + visibleBars * 0.5;
+      const max = activeData.length - 1 + visibleBars * 0.5;
       return Math.min(max, Math.max(min, index));
     },
-    [sortedData, getPlotWidth]
+    [activeData, getPlotWidth]
   );
+
+  // Dynamic zoom-out floor — the smaller of a reasonable absolute minimum
+  // and whatever spacing is needed to fit every loaded bar on screen at
+  // once, so "zoom out far enough to see everything" is always reachable
+  // regardless of how many bars are loaded (daily view with years of
+  // history needs a much smaller floor than a handful of yearly candles).
+  const getMinBarSpacing = useCallback((): number => {
+    return Math.min(MIN_BAR_SPACING, getPlotWidth() / Math.max(1, activeData.length));
+  }, [activeData, getPlotWidth]);
 
   const handleCanvasPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -629,12 +737,12 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
       const cursorX = e.clientX - rect.left;
       const indexUnderCursor = xToIndex(cursorX);
       const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-      const newBarSpacing = Math.min(MAX_BAR_SPACING, Math.max(MIN_BAR_SPACING, viewRef.current.barSpacing * factor));
+      const newBarSpacing = Math.min(MAX_BAR_SPACING, Math.max(getMinBarSpacing(), viewRef.current.barSpacing * factor));
       const newRightEdgeIndex = clampRightEdgeIndex(indexUnderCursor + (getPlotWidth() - cursorX) / newBarSpacing, newBarSpacing);
       viewRef.current = { rightEdgeIndex: newRightEdgeIndex, barSpacing: newBarSpacing };
       bumpRedraw();
     },
-    [xToIndex, bumpRedraw, getPlotWidth, dragState, clampRightEdgeIndex]
+    [xToIndex, bumpRedraw, getPlotWidth, dragState, clampRightEdgeIndex, getMinBarSpacing]
   );
 
   const handleAddAlertFromHover = useCallback(() => {
@@ -1054,6 +1162,24 @@ const StockChart: React.FC<StockChartProps> = ({ symbol, data }) => {
         >
           <Magnet className="h-4 w-4" />
         </Button>
+        <div className="w-px h-5 bg-border mx-1" />
+        {([
+          ["1d", "1D"],
+          ["1w", "1W"],
+          ["1mo", "1M"],
+          ["1y", "1Y"],
+        ] as const).map(([value, label]) => (
+          <Button
+            key={value}
+            variant={interval === value ? "default" : "ghost"}
+            size="sm"
+            className="h-8 px-2 text-xs"
+            title={`${label} candles`}
+            onClick={() => setIntervalState(value)}
+          >
+            {label}
+          </Button>
+        ))}
         {(selectedDrawingId || selectedAlertId) && (
           <Button
             variant="ghost"
